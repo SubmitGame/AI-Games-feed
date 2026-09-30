@@ -1,0 +1,19 @@
+{
+  "name": "ai-games-feed",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview --host 0.0.0.0 --port 5173",
+    "build:feed": "node scripts/build-feed.mjs",
+    "serve": "vite --host 0.0.0.0 --port 5173",
+    "backfill:likes": "node scripts/backfill-likes.mjs",
+    "build:feed:full": "node scripts/backfill-likes.mjs && node scripts/build-feed.mjs",
+    "build:feed:offline": "node scripts/build-feed.mjs"
+  },
+  "devDependencies": {
+    "vite": "^8.3.0"
+  }
+}

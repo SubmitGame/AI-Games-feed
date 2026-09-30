@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#0a0a0a" />
+    <title>AI Games Feed — Claude vs ChatGPT</title>
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <span class="logo">AI Games Feed</span>
+      <div class="topbar-right">
+        <div class="sort" id="sort" role="group" aria-label="Sort feed">
+          <button type="button" class="sort-btn active" data-sort="top" aria-pressed="true">Top</button>
+          <button type="button" class="sort-btn" data-sort="new" aria-pressed="false">New</button>
+        </div>
+        <button type="button" class="filter-btn" id="mobileFilter" aria-pressed="false" title="Show only mobile-tagged games">Mobile</button>
+        <span class="meta" id="count"></span>
+      </div>
+    </header>
+    <main id="feed" class="feed" aria-label="Game feed"></main>
+    <div class="hint" id="hint">Swipe ↑↓</div>
+    <div class="toast" id="toast" hidden role="status" aria-live="polite"></div>
+    <div id="commentsSheet" class="comments-sheet" hidden aria-hidden="true">
+      <div class="comments-backdrop" data-close-comments></div>
+      <div class="comments-panel" role="dialog" aria-modal="true" aria-labelledby="commentsTitle">
+        <div class="comments-grab" aria-hidden="true"><span class="comments-handle"></span></div>
+        <header class="comments-header">
+          <h2 id="commentsTitle" class="comments-title">Comments</h2>
+          <button type="button" class="comments-close" aria-label="Close comments" data-close-comments>&times;</button>
+        </header>
+        <div class="comments-list" id="commentsList"></div>
+      </div>
+    </div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
