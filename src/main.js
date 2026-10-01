@@ -1536,8 +1536,9 @@ function scrollToIndex(i, { smooth = true } = {}) {
   const list = cards();
   if (!list.length) return;
   const clamped = Math.max(0, Math.min(i, list.length - 1));
+  // 'instant' (not 'auto'): CSS scroll-behavior:smooth would still animate 'auto'.
   list[clamped].scrollIntoView({
-    behavior: smooth ? 'smooth' : 'auto',
+    behavior: smooth ? 'smooth' : 'instant',
     block: 'start',
   });
   setActiveIndex(clamped);
@@ -1547,7 +1548,7 @@ function scrollToEndCard({ smooth = true } = {}) {
   const end = endCardEl();
   if (!end) return false;
   end.scrollIntoView({
-    behavior: smooth ? 'smooth' : 'auto',
+    behavior: smooth ? 'smooth' : 'instant',
     block: 'start',
   });
   return true;
@@ -1667,18 +1668,22 @@ function renderFeed(mode, mobileOnly, { restore = true } = {}) {
   feedEl.appendChild(frag);
 
   restoring = true;
+  // Force instant land: assignment to scrollTop also honors CSS scroll-behavior.
+  const prevScrollBehavior = feedEl.style.scrollBehavior;
+  feedEl.style.scrollBehavior = 'auto';
   feedEl.scrollTop = 0;
   activeIndex = 0;
   pipelineTip = -1;
 
   const start = restore ? resolveStartIndex(resumeId) : 0;
   if (start > 0) {
-    // Land cleanly without animating through every card.
+    // Land cleanly without animating through every card (?g= / last-seen resume).
     scrollToIndex(start, { smooth: false });
   } else {
     setActiveIndex(0);
     rememberActiveGame();
   }
+  feedEl.style.scrollBehavior = prevScrollBehavior;
   // Allow layout to settle before re-enabling URL writes from scroll.
   requestAnimationFrame(() => {
     restoring = false;

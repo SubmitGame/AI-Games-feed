@@ -155,7 +155,9 @@ body {
   height: 100vh;
   overflow-y: scroll;
   scroll-snap-type: y mandatory;
-  scroll-behavior: smooth;
+  /* Smooth only via explicit JS scrollIntoView({ behavior: 'smooth' }) —
+     CSS smooth made deep-link / resume scrollTop + scrollIntoView(auto) animate
+     through every card. */
   -webkit-overflow-scrolling: touch;
   overscroll-behavior-y: contain;
 }
