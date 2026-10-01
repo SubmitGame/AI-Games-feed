@@ -1,9 +1,9 @@
 import { defineConfig } from 'vite'
 
 /**
- * Default: browser fetches catalog directly from raw.githubusercontent.com
- * (CORS ACAO: *). The /catalog-proxy route is only a Vite-dev fallback if
- * that direct fetch fails (documented in README).
+ * Default: browser fetches the SubmitGame catalog directly from
+ * raw.githubusercontent.com. The /catalog-proxy route retries that same
+ * catalog only when direct access fails during Vite development.
  *
  * base: '/' — site is served at apex custom domain (lolgames.net), not a
  * project subpath.
@@ -16,7 +16,7 @@ export default defineConfig({
     allowedHosts: true,
     proxy: {
       '/catalog-proxy': {
-        target: 'https://raw.githubusercontent.com',
+        target: 'https://raw.githubusercontent.com/SubmitGame/Claude-vs-ChatGPT/main',
         changeOrigin: true,
         rewrite: (p) => p.replace(/^\/catalog-proxy/, ''),
       },

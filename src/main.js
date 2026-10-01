@@ -1541,8 +1541,8 @@ async function init() {
     // Architecture A: live catalog from raw GitHub (public/games.json is not SoT).
     const { feed, via } = await fetchCatalogFeed();
     data = feed;
-    if (via === 'proxy') {
-      console.info('[ai-games-feed] catalog loaded via Vite /catalog-proxy fallback');
+    if (via.startsWith('proxy:')) {
+      console.info('[ai-games-feed] catalog loaded via Vite /catalog-proxy retry');
     }
   } catch (err) {
     feedEl.innerHTML = `<div class="empty">Failed to load catalog from GitHub<br/><small>${escapeHtml(err.message)}</small></div>`;

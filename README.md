@@ -32,7 +32,7 @@ only for the current session and resets on refresh.
 
 Runtime feed loads games from GitHub raw — **no `npm run build:feed` copy step**.
 
-**Preferred:**
+**Catalog:**
 
 ```
 https://raw.githubusercontent.com/SubmitGame/Claude-vs-ChatGPT/main/data/grokgames.json
@@ -45,19 +45,13 @@ https://raw.githubusercontent.com/SubmitGame/Claude-vs-ChatGPT/main/videos/<file
 https://raw.githubusercontent.com/SubmitGame/Claude-vs-ChatGPT/main/screenshots/<file>.jpg
 ```
 
-**Temporary fallback** if the SubmitGame catalog is unavailable:
-
-```
-https://raw.githubusercontent.com/VibeFin/awesome-opus-5.5-games/main/data/grokgames.json
-```
-
 Client mapping lives in `src/feed-from-catalog.js` (platforms, authors, likes,
 comments, timestamps, `made_with` badges). Fetch uses `cache: 'no-cache'` so
 hourly Overheard pushes show within ~minutes (GitHub raw CDN is ~`max-age=300`).
 
 CORS: `raw.githubusercontent.com` returns `Access-Control-Allow-Origin: *`.
-If JSON fetch ever fails CORS, Vite dev exposes `/catalog-proxy/...` as a
-fallback (see `vite.config.js`) — prefer direct raw first.
+If the direct JSON fetch ever fails CORS, Vite dev retries the same
+SubmitGame catalog through `/catalog-proxy/...` (see `vite.config.js`).
 
 `public/games.json` is **not** the source of truth. Optional offline rebuild:
 `npm run build:feed` / `npm run build:feed:offline` (air-gapped demos only).
@@ -95,7 +89,6 @@ Static output is in `dist/`.
 | Repo | Role |
 |------|------|
 | [SubmitGame/Claude-vs-ChatGPT](https://github.com/SubmitGame/Claude-vs-ChatGPT) | Catalog + videos/screenshots (SoT) |
-| [VibeFin/awesome-opus-5.5-games](https://github.com/VibeFin/awesome-opus-5.5-games) | Predecessor list (fallback) |
 | [SubmitGame/AI-Games-feed](https://github.com/SubmitGame/AI-Games-feed) | This feed UI |
 
 ## License / contributions

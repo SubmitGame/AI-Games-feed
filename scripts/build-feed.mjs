@@ -1,9 +1,8 @@
 #!/usr/bin/env node
 /**
- * OFFLINE FALLBACK ONLY — not the feed source of truth.
+ * OFFLINE DEMO BUILDER — not the feed source of truth.
  *
- * Architecture A (default): the browser fetches
- *   https://raw.githubusercontent.com/VibeFin/awesome-opus-5.5-games/main/data/grokgames.json
+ * Architecture A (default): the browser fetches the SubmitGame catalog
  * and maps cards in src/feed-from-catalog.js.
  *
  * This script still rebuilds public/games.json from a local catalog +
@@ -18,7 +17,7 @@ import { fileURLToPath } from 'node:url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(__dirname, '..');
 const SRC = '/workspace/grokgames.json';
-const AWESOME = '/workspace/awesome-opus-5.5-games/screenshots';
+const CATALOG_SHOTS = '/workspace/Claude-vs-ChatGPT/screenshots';
 const FRESH = '/workspace/opus-games-fresh';
 const OUT_DIR = path.join(root, 'public');
 const SHOTS = path.join(OUT_DIR, 'screenshots');
@@ -362,7 +361,7 @@ for (const g of unique) {
   const basename = g.screenshot_path ? path.basename(g.screenshot_path) : '';
   let screenshot = null;
   if (basename) {
-    const candidates = [path.join(AWESOME, basename), path.join(FRESH, basename)];
+    const candidates = [path.join(CATALOG_SHOTS, basename), path.join(FRESH, basename)];
     const src = candidates.find((p) => fs.existsSync(p));
     if (src) {
       const dest = path.join(SHOTS, basename);

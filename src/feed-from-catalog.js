@@ -3,34 +3,22 @@
  * Used at runtime in the browser (raw GitHub is the source of truth).
  */
 
-/** Preferred catalog + video base (SubmitGame), then legacy VibeFin fallback. */
-export const CATALOG_SOURCES = [
-  {
-    name: 'SubmitGame/Claude-vs-ChatGPT',
-    catalog:
-      'https://raw.githubusercontent.com/SubmitGame/Claude-vs-ChatGPT/main/data/grokgames.json',
-    rawBase: 'https://raw.githubusercontent.com/SubmitGame/Claude-vs-ChatGPT/main/',
-    proxy:
-      '/catalog-proxy/SubmitGame/Claude-vs-ChatGPT/main/data/grokgames.json',
-  },
-  {
-    name: 'VibeFin/awesome-opus-5.5-games',
-    catalog:
-      'https://raw.githubusercontent.com/VibeFin/awesome-opus-5.5-games/main/data/grokgames.json',
-    rawBase:
-      'https://raw.githubusercontent.com/VibeFin/awesome-opus-5.5-games/main/',
-    proxy:
-      '/catalog-proxy/VibeFin/awesome-opus-5.5-games/main/data/grokgames.json',
-  },
-];
+/** Sole catalog and media source: SubmitGame/Claude-vs-ChatGPT. */
+export const CATALOG_SOURCE = {
+  name: 'SubmitGame/Claude-vs-ChatGPT',
+  catalog:
+    'https://raw.githubusercontent.com/SubmitGame/Claude-vs-ChatGPT/main/data/grokgames.json',
+  rawBase: 'https://raw.githubusercontent.com/SubmitGame/Claude-vs-ChatGPT/main/',
+  proxy: '/catalog-proxy/data/grokgames.json',
+};
 
-export const CATALOG_URL = CATALOG_SOURCES[0].catalog;
+export const CATALOG_URL = CATALOG_SOURCE.catalog;
 
-/** Mutable so fetchCatalogFeed can point assets at whichever catalog succeeded. */
-export let REPO_RAW_BASE = CATALOG_SOURCES[0].rawBase;
+/** Media paths always resolve against the SubmitGame catalog repository. */
+export let REPO_RAW_BASE = CATALOG_SOURCE.rawBase;
 
-/** Vite-dev proxy fallback if raw fetch is blocked by CORS (preferred repo). */
-export const CATALOG_PROXY_URL = CATALOG_SOURCES[0].proxy;
+/** Vite-dev proxy for the same SubmitGame catalog when direct fetch fails. */
+export const CATALOG_PROXY_URL = CATALOG_SOURCE.proxy;
 
 const MADE_WITH_ALLOWED = new Set(['opus-5.5', 'sonnet-5.5', 'astra']);
 
@@ -381,36 +369,30 @@ export function mapCatalogToFeed(data) {
 }
 
 /**
- * Fetch catalog from raw GitHub (preferred SubmitGame, then VibeFin fallback),
- * then Vite /catalog-proxy for each source if CORS blocks raw.
+ * Fetch the SubmitGame catalog directly, then retry the same catalog through
+ * the Vite dev proxy if direct CORS access fails.
  * Uses cache: 'no-cache' so hourly Overheard pushes show up promptly.
  */
 export async function fetchCatalogFeed() {
-  const opts = { cache: 'no-cache', mode: 'cors' };
   const errors = [];
-
-  for (const source of CATALOG_SOURCES) {
-    try {
-      const res = await fetch(source.catalog, opts);
-      if (!res.ok) throw new Error(`HTTP ${res.status} from raw ${source.name}`);
-      const data = await res.json();
-      REPO_RAW_BASE = source.rawBase;
-      return { feed: mapCatalogToFeed(data), via: `raw:${source.name}` };
-    } catch (err) {
-      errors.push(`raw ${source.name}: ${err?.message || err}`);
-    }
+  try {
+    const res = await fetch(CATALOG_SOURCE.catalog, { cache: 'no-cache', mode: 'cors' });
+    if (!res.ok) throw new Error(`HTTP ${res.status} from raw ${CATALOG_SOURCE.name}`);
+    const data = await res.json();
+    REPO_RAW_BASE = CATALOG_SOURCE.rawBase;
+    return { feed: mapCatalogToFeed(data), via: `raw:${CATALOG_SOURCE.name}` };
+  } catch (err) {
+    errors.push(`raw ${CATALOG_SOURCE.name}: ${err?.message || err}`);
   }
 
-  for (const source of CATALOG_SOURCES) {
-    try {
-      const res = await fetch(source.proxy, { cache: 'no-cache' });
-      if (!res.ok) throw new Error(`HTTP ${res.status} from proxy ${source.name}`);
-      const data = await res.json();
-      REPO_RAW_BASE = source.rawBase;
-      return { feed: mapCatalogToFeed(data), via: `proxy:${source.name}` };
-    } catch (err) {
-      errors.push(`proxy ${source.name}: ${err?.message || err}`);
-    }
+  try {
+    const res = await fetch(CATALOG_SOURCE.proxy, { cache: 'no-cache' });
+    if (!res.ok) throw new Error(`HTTP ${res.status} from proxy ${CATALOG_SOURCE.name}`);
+    const data = await res.json();
+    REPO_RAW_BASE = CATALOG_SOURCE.rawBase;
+    return { feed: mapCatalogToFeed(data), via: `proxy:${CATALOG_SOURCE.name}` };
+  } catch (err) {
+    errors.push(`proxy ${CATALOG_SOURCE.name}: ${err?.message || err}`);
   }
 
   throw new Error(`Catalog fetch failed (${errors.join('; ')})`);
