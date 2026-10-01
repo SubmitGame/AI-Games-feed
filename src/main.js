@@ -12,6 +12,8 @@ const toastEl = document.getElementById('toast');
 const commentsSheetEl = document.getElementById('commentsSheet');
 const commentsListEl = document.getElementById('commentsList');
 const commentsTitleEl = document.getElementById('commentsTitle');
+const playOverlayEl = document.getElementById('playOverlay');
+const playFrameEl = document.getElementById('playFrame');
 
 const SORT_KEY = 'opus-feed-sort';
 const MOBILE_KEY = 'opus-feed-mobile-only';
@@ -62,6 +64,8 @@ let userGestureUnlocked = false;
 let gestureWired = false;
 /** Comments bottom sheet open — pause auto-advance / feed scroll. */
 let commentsOpen = false;
+/** Fullscreen iframe Play overlay open — pause video / auto-advance. */
+let playOverlayOpen = false;
 let commentsSwipeStartY = null;
 let commentsSwipeCurrentY = 0;
 let commentsSwipeActive = false;
@@ -540,7 +544,7 @@ function onVideoEnded(video) {
   const idx = Number(card?.dataset.index);
   if (idx !== activeIndex) return;
   if (document.visibilityState === 'hidden') return;
-  if (commentsOpen || autoAdvancePaused) return;
+  if (commentsOpen || playOverlayOpen || autoAdvancePaused) return;
   if (video.paused && !video.ended) return;
 
   const dur = Number(video.duration);
@@ -570,7 +574,7 @@ function onVideoEnded(video) {
 
 function advanceToNext() {
   if (document.visibilityState === 'hidden') return;
-  if (commentsOpen || autoAdvancePaused) return;
+  if (commentsOpen || playOverlayOpen || autoAdvancePaused) return;
   const list = cards();
   const next = activeIndex + 1;
   if (next >= list.length) {
@@ -984,7 +988,7 @@ function wireCommentsSheet() {
   grab.addEventListener('pointercancel', onEnd);
 
   document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && commentsOpen) {
+    if (e.key === 'Escape' && commentsOpen && !playOverlayOpen) {
       e.preventDefault();
       closeCommentsSheet();
     }
@@ -1222,6 +1226,7 @@ function buildCard(game, index) {
   card.dataset.index = String(index);
   card.dataset.id = game.id;
   card.dataset.url = game.play_url;
+  if (game.iframe === true) card.dataset.iframe = 'true';
 
   const screenshot = game.screenshot
     ? `<img class="poster ken-burns" src="${escapeHtml(game.screenshot)}" alt="" decoding="async" draggable="false" />`
@@ -1282,7 +1287,7 @@ function buildCard(game, index) {
       ${authorRowHtml(game)}
       <h2 class="title">${escapeHtml(game.title)}</h2>
       ${desc}
-      <button type="button" class="play" aria-label="Play ${escapeHtml(game.title)}">Play</button>
+      <button type="button" class="play" aria-label="${escapeHtml(playButtonLabel(game))} ${escapeHtml(game.title)}">${escapeHtml(playButtonLabel(game))}</button>
     </div>
     <div class="rail" aria-label="Actions">
       <button type="button" class="rail-btn like ${liked ? 'liked' : ''}" aria-pressed="${liked ? 'true' : 'false'}" aria-label="${liked ? 'Unlike' : 'Like'}">
@@ -1321,12 +1326,7 @@ function buildCard(game, index) {
 
   card.querySelector('.play').addEventListener('click', (e) => {
     e.stopPropagation();
-    // Leaving for external play: cancel short-clip accum / auto-advance.
-    autoAdvancePaused = true;
-    watchAccumSec = 0;
-    const v = videoOf(card);
-    if (v) v.pause();
-    openGame(game.play_url);
+    playGame(game);
   });
 
   const likeBtn = card.querySelector('.like');
@@ -1370,8 +1370,122 @@ function buildCard(game, index) {
   return card;
 }
 
+function isIframeGame(gameOrFlag) {
+  if (typeof gameOrFlag === 'boolean') return gameOrFlag;
+  if (gameOrFlag && typeof gameOrFlag === 'object') return gameOrFlag.iframe === true;
+  return gameOrFlag === true || gameOrFlag === 'true';
+}
+
+function playButtonLabel(game) {
+  return isIframeGame(game) ? 'Play ▸' : 'Play ↗';
+}
+
 function openGame(url) {
   window.open(url, '_blank', 'noopener,noreferrer');
+}
+
+function openPlayOverlay(url, title = 'Play game') {
+  if (!playOverlayEl || !playFrameEl || !url) return;
+  playOverlayOpen = true;
+  autoAdvancePaused = true;
+  watchAccumSec = 0;
+  const list = cards();
+  const video = videoOf(list[activeIndex]);
+  if (video) video.pause();
+
+  playFrameEl.title = title || 'Play game';
+  playFrameEl.src = url;
+  const openLink = playOverlayEl.querySelector('[data-open-play]');
+  if (openLink) openLink.href = url;
+
+  playOverlayEl.hidden = false;
+  playOverlayEl.setAttribute('aria-hidden', 'false');
+  document.body.classList.add('play-overlay-open');
+  requestAnimationFrame(() => {
+    playOverlayEl.classList.add('open');
+  });
+}
+
+function closePlayOverlay() {
+  if (!playOverlayEl || !playOverlayOpen) return;
+  playOverlayOpen = false;
+  playOverlayEl.classList.remove('open');
+  document.body.classList.remove('play-overlay-open');
+  playOverlayEl.setAttribute('aria-hidden', 'true');
+  // Stop game scripts/audio immediately.
+  if (playFrameEl) {
+    playFrameEl.src = 'about:blank';
+    playFrameEl.removeAttribute('srcdoc');
+  }
+  const openLink = playOverlayEl.querySelector('[data-open-play]');
+  if (openLink) openLink.href = '#';
+
+  const finish = () => {
+    if (playOverlayOpen) return;
+    playOverlayEl.hidden = true;
+    // Resume feed video + auto-advance after Exit.
+    autoAdvancePaused = false;
+    watchAccumSec = 0;
+    const list = cards();
+    const video = videoOf(list[activeIndex]);
+    if (video) tryPlay(video);
+  };
+  setTimeout(finish, 180);
+}
+
+function playGame(gameOrUrl, maybeTitle) {
+  const url =
+    typeof gameOrUrl === 'string'
+      ? gameOrUrl
+      : gameOrUrl?.play_url || gameOrUrl?.dataset?.url;
+  if (!url) return;
+  const iframe =
+    typeof gameOrUrl === 'string'
+      ? false
+      : isIframeGame(gameOrUrl);
+  const title =
+    maybeTitle ||
+    (typeof gameOrUrl === 'object' && gameOrUrl?.title) ||
+    'Play game';
+  if (iframe) openPlayOverlay(url, title);
+  else {
+    autoAdvancePaused = true;
+    watchAccumSec = 0;
+    const list = cards();
+    const video = videoOf(list[activeIndex]);
+    if (video) video.pause();
+    openGame(url);
+  }
+}
+
+function wirePlayOverlay() {
+  if (!playOverlayEl) return;
+  playOverlayEl.querySelectorAll('[data-close-play]').forEach((el) => {
+    el.addEventListener('click', (e) => {
+      e.stopPropagation();
+      closePlayOverlay();
+    });
+  });
+  const openLink = playOverlayEl.querySelector('[data-open-play]');
+  if (openLink) {
+    openLink.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const href = openLink.getAttribute('href');
+      if (!href || href === '#') {
+        e.preventDefault();
+        return;
+      }
+      // Prefer explicit noopener window.open; keep default as fallback.
+      e.preventDefault();
+      window.open(href, '_blank', 'noopener,noreferrer');
+    });
+  }
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && playOverlayOpen) {
+      e.preventDefault();
+      closePlayOverlay();
+    }
+  });
 }
 
 function scrollToIndex(i, { smooth = true } = {}) {
@@ -1412,7 +1526,7 @@ function wireKeyboard() {
   if (keyboardWired) return;
   keyboardWired = true;
   window.addEventListener('keydown', (e) => {
-    if (commentsOpen) return;
+    if (commentsOpen || playOverlayOpen) return;
     if (e.key === 'ArrowDown' || e.key === 'PageDown' || e.key === 'j') {
       e.preventDefault();
       const current = currentIndexFromScroll();
@@ -1426,11 +1540,11 @@ function wireKeyboard() {
     } else if (e.key === 'Enter') {
       const card = cards()[currentIndexFromScroll()];
       if (card?.dataset.url) {
-        autoAdvancePaused = true;
-        watchAccumSec = 0;
-        const v = videoOf(card);
-        if (v) v.pause();
-        openGame(card.dataset.url);
+        playGame({
+          play_url: card.dataset.url,
+          iframe: card.dataset.iframe === 'true',
+          title: card.querySelector('.title')?.textContent || 'Play game',
+        });
       }
     }
   });
@@ -1593,6 +1707,7 @@ async function init() {
 
   wireAudioGesture();
   wireCommentsSheet();
+  wirePlayOverlay();
 
   const mode = readSortMode();
   const mobileOnly = readMobileOnly();
@@ -1623,9 +1738,11 @@ function wireVisibility() {
       // Pause playback + auto-advance while backgrounded.
       video.pause();
     } else {
+      // Stay paused while comments or iframe Play overlay is open.
+      if (commentsOpen || playOverlayOpen) return;
       // Back from background / external Play: start accum fresh if Play
       // cancelled this card, then resume playback.
-      if (autoAdvancePaused && !commentsOpen) {
+      if (autoAdvancePaused) {
         watchAccumSec = 0;
         autoAdvancePaused = false;
       }

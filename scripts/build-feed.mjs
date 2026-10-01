@@ -412,6 +412,7 @@ for (const g of unique) {
     entry.avatar_url = avatar_url;
     if (isLocalPublicPath(avatar_url)) withLocalAvatar++;
   }
+  if (typeof g.iframe === 'boolean') entry.iframe = g.iframe;
   passRemoteLikes(g, entry);
   if (entry.remote_likes != null) withRemoteLikes++;
   passComments(g, entry);

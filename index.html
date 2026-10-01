@@ -42,6 +42,19 @@
         <div class="comments-list" id="commentsList"></div>
       </div>
     </div>
+    <div id="playOverlay" class="play-overlay" hidden aria-hidden="true">
+      <div class="play-overlay-bar">
+        <button type="button" class="play-overlay-exit" data-close-play>Exit</button>
+        <a class="play-overlay-open" data-open-play href="#" target="_blank" rel="noopener noreferrer">Open ↗</a>
+      </div>
+      <iframe
+        id="playFrame"
+        class="play-overlay-frame"
+        title="Play game"
+        sandbox="allow-scripts allow-same-origin allow-pointer-lock allow-popups allow-forms allow-modals allow-orientation-lock"
+        allow="pointer-lock; fullscreen; gamepad; autoplay"
+      ></iframe>
+    </div>
     <script type="module" src="/src/main.js"></script>
   </body>
 </html>
