@@ -2,6 +2,8 @@
 
 TikTok-style vertical feed of **AI-made browser games** — Claude, ChatGPT/Astra, and more. Swipe through gameplay clips; open play links and sources from the card rail.
 
+Live site: **[games.omgithub.com](https://games.omgithub.com/)**. The former **lolgames.net** URL 301-redirects here.
+
 Live catalog source of truth: **[SubmitGame/Claude-vs-ChatGPT](https://github.com/SubmitGame/Claude-vs-ChatGPT)** (`data/grokgames.json`). This app does **not** ship the catalog; it fetches raw GitHub at runtime.
 
 ## Preview

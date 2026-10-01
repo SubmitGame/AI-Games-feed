@@ -5,7 +5,7 @@ import { defineConfig } from 'vite'
  * raw.githubusercontent.com. The /catalog-proxy route retries that same
  * catalog only when direct access fails during Vite development.
  *
- * base: '/' — site is served at apex custom domain (lolgames.net), not a
+ * base: '/' — site is served at apex custom domain (games.omgithub.com), not a
  * project subpath.
  */
 export default defineConfig({

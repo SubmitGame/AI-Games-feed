@@ -20,6 +20,7 @@ const LIKES_KEY = 'opus-feed-likes';
 const SEEN_KEY = 'opus-feed-seen';
 const SORT_TOP = 'top';
 const SORT_NEW = 'new';
+const PUBLIC_SITE_ORIGIN = 'https://games.omgithub.com';
 
 /** Max videos with src attached (current + ahead). */
 const PRELOAD_WINDOW = 5;
@@ -357,21 +358,37 @@ function deepLinkIdFromUrl() {
   }
 }
 
+function publicUrlFor(id = '') {
+  const current = new URL(window.location.href);
+  const u = new URL(PUBLIC_SITE_ORIGIN);
+  u.pathname = current.pathname;
+  if (id) u.searchParams.set('g', id);
+  return u;
+}
+
 function shareUrlFor(id) {
-  const u = new URL(window.location.href);
-  u.search = '';
-  u.hash = '';
-  u.searchParams.set('g', id);
-  return u.toString();
+  return publicUrlFor(id).toString();
+}
+
+function syncCanonicalUrl(id = '') {
+  const canonical = document.querySelector('link[rel="canonical"]');
+  const ogUrl = document.querySelector('meta[property="og:url"]');
+  const url = publicUrlFor(id).toString();
+  if (canonical) canonical.href = url;
+  if (ogUrl) ogUrl.content = url;
 }
 
 function syncUrlForGame(id) {
   if (!id || restoring) return;
-  try {
-    const next = shareUrlFor(id);
-    if (next === window.location.href) return;
-    history.replaceState({ g: id }, '', next);
-  } catch (_) {}
+  const next = shareUrlFor(id);
+  if (next !== window.location.href) {
+    try {
+      history.replaceState({ g: id }, '', next);
+    } catch (_) {
+      // Cross-origin history changes are not allowed; sharing still uses next.
+    }
+  }
+  syncCanonicalUrl(id);
 }
 
 function cards() {
@@ -1536,6 +1553,7 @@ function wireMobileFilter() {
 }
 
 async function init() {
+  syncCanonicalUrl(deepLinkIdFromUrl());
   let data;
   try {
     // Architecture A: live catalog from raw GitHub (public/games.json is not SoT).
