@@ -38,8 +38,6 @@ const BUFFER_AHEAD_SEC = 2.5;
 const MIN_WATCH_BEFORE_ADVANCE = 10;
 
 let allGames = [];
-/** dropped twin id → kept id (from play_url dedupe). */
-let idAliases = Object.create(null);
 let catalogCount = 0;
 let keyboardWired = false;
 let scrollHintWired = false;
@@ -271,22 +269,12 @@ function resetWatchAccum(id) {
  * link wins; otherwise refresh resumes from the saved last id. Keeping this
  * choice in one place makes ordering and landing use the same target.
  */
-/**
- * Resolve a catalog/deep-link id against the visible list, including
- * play_url-dedupe twin aliases (dropped id → kept id).
- */
-function resolveIdAlias(id, games) {
-  if (!id) return '';
-  if (games.some((game) => game.id === id)) return id;
-  const kept = idAliases[id];
-  if (kept && games.some((game) => game.id === kept)) return kept;
-  return '';
-}
-
 function resumeIdForGames(games) {
-  const linkedId = resolveIdAlias(deepLinkIdFromUrl(), games);
-  if (linkedId) return linkedId;
-  return resolveIdAlias(readLastId(), games);
+  const hasId = (id) => Boolean(id && games.some((game) => game.id === id));
+  const linkedId = deepLinkIdFromUrl();
+  if (hasId(linkedId)) return linkedId;
+  const lastId = readLastId();
+  return hasId(lastId) ? lastId : '';
 }
 
 /**
@@ -1716,22 +1704,6 @@ async function init() {
   allGames = (Array.isArray(data.games) ? data.games : []).filter(
     (g) => g?.video && g?.play_url && g?.id,
   );
-
-  idAliases = Object.create(null);
-  const rawAliases =
-    data.id_aliases && typeof data.id_aliases === 'object' ? data.id_aliases : null;
-  if (rawAliases) {
-    for (const [from, to] of Object.entries(rawAliases)) {
-      if (from && to) idAliases[String(from)] = String(to);
-    }
-  }
-  for (const g of allGames) {
-    if (!Array.isArray(g.aliases)) continue;
-    for (const alias of g.aliases) {
-      const from = alias != null ? String(alias).trim() : '';
-      if (from && g.id) idAliases[from] = String(g.id);
-    }
-  }
 
   wireAudioGesture();
   wireCommentsSheet();

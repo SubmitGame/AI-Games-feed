@@ -291,38 +291,21 @@ export function mapCatalogToFeed(data) {
   const catalogCount = gamesIn.length;
   const filtered = gamesIn.filter((g) => g?.play_url && String(g.play_url).trim());
 
-  // Dedup by play_url, keep highest screenshot_score.
-  // Dropped twin ids become aliases → kept id so deep links still resolve.
+  // Dedup by play_url, keep highest screenshot_score
   const byUrl = new Map();
   for (const g of filtered) {
     const url = String(g.play_url).replace(/\/$/, '');
-    if (!byUrl.has(url)) byUrl.set(url, []);
-    byUrl.get(url).push(g);
+    const score = g.screenshot_score ?? -1;
+    const prev = byUrl.get(url);
+    if (!prev || (prev.screenshot_score ?? -1) < score) byUrl.set(url, g);
   }
 
-  const unique = [];
-  for (const group of byUrl.values()) {
-    group.sort(
-      (a, b) => (b.screenshot_score ?? -1) - (a.screenshot_score ?? -1),
-    );
-    const kept = group[0];
-    const twinIds = [];
-    for (const twin of group.slice(1)) {
-      const twinId = twin?.id != null ? String(twin.id).trim() : '';
-      const keptId = kept?.id != null ? String(kept.id).trim() : '';
-      if (!twinId || !keptId || twinId === keptId) continue;
-      twinIds.push(twinId);
-    }
-    unique.push({ game: kept, aliases: twinIds });
-  }
-
-  unique.sort(
-    (a, b) =>
-      (b.game.screenshot_score ?? -1) - (a.game.screenshot_score ?? -1),
+  const unique = [...byUrl.values()].sort(
+    (a, b) => (b.screenshot_score ?? -1) - (a.screenshot_score ?? -1),
   );
 
   const feed = [];
-  for (const { game: g, aliases } of unique) {
+  for (const g of unique) {
     const videoRel = extractVideoRel(g);
     if (!videoRel) continue;
 
@@ -374,17 +357,7 @@ export function mapCatalogToFeed(data) {
     if (typeof g.iframe === 'boolean') entry.iframe = g.iframe;
     passRemoteLikes(g, entry);
     passComments(g, entry);
-    if (aliases.length) entry.aliases = aliases;
     feed.push(entry);
-  }
-
-  // Only publish aliases whose kept card survived video filtering.
-  const publishedAliases = Object.create(null);
-  for (const entry of feed) {
-    if (!Array.isArray(entry.aliases) || !entry.id) continue;
-    for (const alias of entry.aliases) {
-      if (alias) publishedAliases[alias] = entry.id;
-    }
   }
 
   return {
@@ -392,7 +365,6 @@ export function mapCatalogToFeed(data) {
     catalog_count: catalogCount,
     count: feed.length,
     games: feed,
-    id_aliases: publishedAliases,
     source: 'raw-github',
   };
 }
