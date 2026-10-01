@@ -75,6 +75,8 @@ Static output is in `dist/`.
 - **Seen set** — `opus-feed-seen`. Active card is marked seen.
 - **Unseen catch-up** — on load/resume, unseen games that sort *above* the
   restored id are inserted immediately after the current card.
+- **Sort toggle (Top/New)** — keeps the currently visible game id in the new
+  order (instant land, no unseen catch-up). Mobile filter still jumps to top.
 - **Auto-advance** — on video `ended`. Clips shorter than 10s loop until
   cumulative watch ≥ 10s, then advance; longer clips advance on first end.
 - **End card** — “You're up to date” with a link to [omgithub.com](https://omgithub.com/).

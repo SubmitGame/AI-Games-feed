@@ -1637,10 +1637,11 @@ function syncMobileUI(on) {
   mobileFilterEl.setAttribute('aria-pressed', on ? 'true' : 'false');
 }
 
-function renderFeed(mode, mobileOnly, { restore = true } = {}) {
+function renderFeed(mode, mobileOnly, { restore = true, landId = '' } = {}) {
   let games = visibleGames(mode, mobileOnly);
   const resumeId = restore ? resumeIdForGames(games) : '';
   // On resume/load: park unseen higher-ranked games right after the target.
+  // Sort toggle passes landId with restore:false — same game, no catch-up.
   if (restore) games = orderWithUnseenCatchUp(games, resumeId);
   const likes = likeCount();
   const videoCount = allGames.length;
@@ -1675,9 +1676,11 @@ function renderFeed(mode, mobileOnly, { restore = true } = {}) {
   activeIndex = 0;
   pipelineTip = -1;
 
-  const start = restore ? resolveStartIndex(resumeId) : 0;
+  // restore → resumeId (with catch-up); sort toggle → landId (no catch-up); else top.
+  const targetId = restore ? resumeId : landId;
+  const start = targetId ? resolveStartIndex(targetId) : 0;
   if (start > 0) {
-    // Land cleanly without animating through every card (?g= / last-seen resume).
+    // Land cleanly without animating through every card (?g= / last-seen / sort keep).
     scrollToIndex(start, { smooth: false });
   } else {
     setActiveIndex(0);
@@ -1697,9 +1700,11 @@ function wireSortToggle() {
     const btn = e.target.closest('[data-sort]');
     if (!btn) return;
     const mode = btn.dataset.sort === SORT_NEW ? SORT_NEW : SORT_TOP;
+    // Capture before DOM wipe; land on same game in the new order (no catch-up).
+    const keepId = cards()[activeIndex]?.dataset.id || readLastId();
     writeSortMode(mode);
     syncSortUI(mode);
-    renderFeed(mode, readMobileOnly(), { restore: false });
+    renderFeed(mode, readMobileOnly(), { restore: false, landId: keepId });
     hideHint();
   });
 }
