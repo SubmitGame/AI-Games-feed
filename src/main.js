@@ -1458,28 +1458,72 @@ function playGame(gameOrUrl, maybeTitle) {
   }
 }
 
+function pointInEl(x, y, el) {
+  if (!el) return false;
+  const r = el.getBoundingClientRect();
+  return x >= r.left && x <= r.right && y >= r.top && y <= r.bottom;
+}
+
 function wirePlayOverlay() {
   if (!playOverlayEl) return;
+
+  // Cross-origin OOPIF games (e.g. halo.omgithub.com with COOP/COEP) can
+  // retarget the synthesized `click` to <html> even when pointerdown/up hit
+  // the Exit/Open controls. :active still animates, but click handlers never
+  // run. Prefer pointerup on the controls; fall back to click + hit-tested
+  // document click for keyboard / odd mouse paths.
+  let openGuardUntil = 0;
+
+  const activateClose = (e) => {
+    if (!playOverlayOpen) return;
+    e.preventDefault();
+    e.stopPropagation();
+    closePlayOverlay();
+  };
+
+  const activateOpen = (e) => {
+    if (!playOverlayOpen) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const openLink = playOverlayEl.querySelector('[data-open-play]');
+    const href = openLink?.getAttribute('href');
+    if (!href || href === '#') return;
+    const now = Date.now();
+    if (now < openGuardUntil) return;
+    openGuardUntil = now + 600;
+    window.open(href, '_blank', 'noopener,noreferrer');
+  };
+
+  const bindActivate = (el, activate) => {
+    if (!el) return;
+    el.addEventListener('pointerup', (e) => {
+      if (e.pointerType === 'mouse' && e.button !== 0) return;
+      activate(e);
+    });
+    el.addEventListener('click', activate);
+  };
+
   playOverlayEl.querySelectorAll('[data-close-play]').forEach((el) => {
-    el.addEventListener('click', (e) => {
-      e.stopPropagation();
-      closePlayOverlay();
-    });
+    bindActivate(el, activateClose);
   });
-  const openLink = playOverlayEl.querySelector('[data-open-play]');
-  if (openLink) {
-    openLink.addEventListener('click', (e) => {
-      e.stopPropagation();
-      const href = openLink.getAttribute('href');
-      if (!href || href === '#') {
-        e.preventDefault();
-        return;
-      }
-      // Prefer explicit noopener window.open; keep default as fallback.
-      e.preventDefault();
-      window.open(href, '_blank', 'noopener,noreferrer');
-    });
-  }
+  bindActivate(playOverlayEl.querySelector('[data-open-play]'), activateOpen);
+
+  // When click is retargeted to <html>, still honor taps that land on controls.
+  document.addEventListener(
+    'click',
+    (e) => {
+      if (!playOverlayOpen) return;
+      const x = e.clientX;
+      const y = e.clientY;
+      if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+      const exitBtn = playOverlayEl.querySelector('[data-close-play]');
+      const openLink = playOverlayEl.querySelector('[data-open-play]');
+      if (pointInEl(x, y, exitBtn)) activateClose(e);
+      else if (pointInEl(x, y, openLink)) activateOpen(e);
+    },
+    true,
+  );
+
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && playOverlayOpen) {
       e.preventDefault();

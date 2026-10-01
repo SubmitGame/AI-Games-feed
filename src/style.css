@@ -1002,6 +1002,8 @@ body.play-overlay-open .feed {
 }
 
 .play-overlay-bar {
+  position: relative;
+  z-index: 2;
   flex: 0 0 auto;
   display: flex;
   align-items: center;
@@ -1014,6 +1016,8 @@ body.play-overlay-open .feed {
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
+  pointer-events: auto;
+  touch-action: manipulation;
 }
 
 .play-overlay-exit,
@@ -1031,6 +1035,11 @@ body.play-overlay-open .feed {
   color: #fff;
   background: rgba(255, 255, 255, 0.12);
   transition: background 0.15s ease, transform 0.1s ease;
+  position: relative;
+  z-index: 1;
+  touch-action: manipulation;
+  -webkit-user-select: none;
+  user-select: none;
 }
 
 .play-overlay-exit:hover,
@@ -1053,11 +1062,13 @@ body.play-overlay-open .feed {
 }
 
 .play-overlay-frame {
+  position: relative;
+  z-index: 0;
   flex: 1 1 auto;
   width: 100%;
   border: 0;
   background: #000;
-  /* Fill remaining viewport under the bar */
+  /* Fill remaining viewport under the bar — keep below chrome for hit-testing */
   min-height: 0;
 }
 
