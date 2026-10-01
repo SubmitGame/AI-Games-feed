@@ -354,6 +354,7 @@ export function mapCatalogToFeed(data) {
     if (github_user) entry.github_user = github_user;
     if (x_handle) entry.x_handle = x_handle;
     if (avatar_url) entry.avatar_url = avatar_url;
+    if (typeof g.iframe === 'boolean') entry.iframe = g.iframe;
     passRemoteLikes(g, entry);
     passComments(g, entry);
     feed.push(entry);

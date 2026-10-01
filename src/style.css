@@ -602,12 +602,14 @@ body {
   min-height: 11px;
 }
 
-/* Lock feed scroll while comments sheet is open */
-body.comments-open {
+/* Lock feed scroll while comments sheet or play overlay is open */
+body.comments-open,
+body.play-overlay-open {
   overflow: hidden;
 }
 
-body.comments-open .feed {
+body.comments-open .feed,
+body.play-overlay-open .feed {
   overflow: hidden;
   touch-action: none;
 }
@@ -976,3 +978,86 @@ body.comments-open .feed {
 .discover-more:active {
   transform: scale(0.97);
 }
+
+/* Fullscreen iframe Play overlay */
+.play-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: flex;
+  flex-direction: column;
+  background: #000;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.18s ease;
+}
+
+.play-overlay[hidden] {
+  display: none !important;
+}
+
+.play-overlay.open {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.play-overlay-bar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: calc(10px + env(safe-area-inset-top, 0px)) 14px 10px;
+  padding-left: calc(14px + env(safe-area-inset-left, 0px));
+  padding-right: calc(14px + env(safe-area-inset-right, 0px));
+  background: rgba(10, 10, 12, 0.92);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+.play-overlay-exit,
+.play-overlay-open {
+  appearance: none;
+  border: none;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 700;
+  font-size: 14px;
+  letter-spacing: 0.02em;
+  padding: 10px 16px;
+  border-radius: 999px;
+  text-decoration: none;
+  color: #fff;
+  background: rgba(255, 255, 255, 0.12);
+  transition: background 0.15s ease, transform 0.1s ease;
+}
+
+.play-overlay-exit:hover,
+.play-overlay-open:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.play-overlay-exit:active,
+.play-overlay-open:active {
+  transform: scale(0.97);
+}
+
+.play-overlay-exit {
+  background: var(--accent);
+  box-shadow: 0 6px 18px rgba(124, 92, 255, 0.35);
+}
+
+.play-overlay-exit:hover {
+  background: var(--accent-hover);
+}
+
+.play-overlay-frame {
+  flex: 1 1 auto;
+  width: 100%;
+  border: 0;
+  background: #000;
+  /* Fill remaining viewport under the bar */
+  min-height: 0;
+}
+
