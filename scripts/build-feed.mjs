@@ -32,16 +32,9 @@ const data = JSON.parse(fs.readFileSync(SRC, 'utf8'));
 const filtered = (data.games || []).filter((g) => g?.play_url && String(g.play_url).trim());
 const catalogCount = Array.isArray(data.games) ? data.games.length : 0;
 
-// Dedup by play_url, keep highest screenshot_score
-const byUrl = new Map();
-for (const g of filtered) {
-  const url = g.play_url.replace(/\/$/, '');
-  const score = g.screenshot_score ?? -1;
-  const prev = byUrl.get(url);
-  if (!prev || (prev.screenshot_score ?? -1) < score) byUrl.set(url, g);
-}
-
-const unique = [...byUrl.values()].sort(
+// Do not collapse by play_url — catalog enforces uniqueness going forward;
+// if duplicate play_urls slip into JSON, show both (not highest score only).
+const sorted = [...filtered].sort(
   (a, b) => (b.screenshot_score ?? -1) - (a.screenshot_score ?? -1),
 );
 
@@ -351,7 +344,7 @@ let withLocalAvatar = 0;
 let withRemoteLikes = 0;
 let withComments = 0;
 
-for (const g of unique) {
+for (const g of sorted) {
   const video = resolveVideo(g);
   if (!video) {
     noVideo++;
