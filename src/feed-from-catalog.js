@@ -1,6 +1,6 @@
 /**
  * Map Overheard / Claude-vs-ChatGPT catalog JSON → AI Games Feed card entries.
- * Used at runtime in the browser (raw GitHub is the source of truth).
+ * Used at runtime in the browser (catalog JSON on GitHub raw; videos on R2).
  */
 
 /** Sole catalog and media source: SubmitGame/Claude-vs-ChatGPT. */
@@ -14,8 +14,12 @@ export const CATALOG_SOURCE = {
 
 export const CATALOG_URL = CATALOG_SOURCE.catalog;
 
-/** Media paths always resolve against the SubmitGame catalog repository. */
+/** Screenshots / non-video media: SubmitGame catalog on GitHub raw. */
 export let REPO_RAW_BASE = CATALOG_SOURCE.rawBase;
+
+/** Gameplay videos + posters on Cloudflare R2 (public.dev). */
+export const VIDEO_RAW_BASE =
+  'https://pub-f8a67dd028134c809667b629ac5ff178.r2.dev/';
 
 /** Vite-dev proxy for the same SubmitGame catalog when direct fetch fails. */
 export const CATALOG_PROXY_URL = CATALOG_SOURCE.proxy;
@@ -79,7 +83,13 @@ export function resolveRepoAssetUrl(raw, { preferFolder } = {}) {
 
   rel = rel.replace(/^\/+/, '');
   if (!rel) return null;
-  return REPO_RAW_BASE + rel;
+
+  const isVideo =
+    preferFolder === 'videos' ||
+    /^videos\//i.test(rel) ||
+    /\.(mp4|webm|mov)$/i.test(rel);
+  const base = isVideo ? VIDEO_RAW_BASE : REPO_RAW_BASE;
+  return base + rel;
 }
 
 /** First playable video relative path from catalog game fields. */
