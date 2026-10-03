@@ -323,6 +323,23 @@ function withoutSeenExcept(games, keepId) {
   return games.filter((g) => g.id === keepId || !seen[g.id]);
 }
 
+/**
+ * Seen games sit above the landing card, oldest first, so scrolling up walks
+ * back through watch history (most recently seen is the card just above).
+ * Unseen games keep their Top/New order below it.
+ */
+function orderSeenHistoryAbove(games, anchorId) {
+  const seen = readSeen();
+  const rest = games.filter((g) => g.id !== anchorId);
+  const history = rest
+    .filter((g) => seen[g.id])
+    .sort((a, b) => (Number(seen[a.id]) || 0) - (Number(seen[b.id]) || 0));
+  const upcoming = rest.filter((g) => !seen[g.id]);
+  const anchor = games.find((g) => g.id === anchorId);
+  if (!anchor) return [...history, ...upcoming];
+  return [...history, anchor, ...upcoming];
+}
+
 function orderWithUnseenCatchUp(games, resumeId) {
   if (!resumeId || !games.length) return games;
   const idx = games.findIndex((g) => g.id === resumeId);
@@ -1868,16 +1885,8 @@ function renderFeed(mode, mobileOnly, { restore = true, landId = '' } = {}) {
   let games = sorted;
   const resumeId = restore ? resumeIdForGames(games) : '';
   const anchorId = restore ? resumeId : landId;
-  if (mode === SORT_NEW) {
-    // Latest hides games already viewed in this feed. The landing card stays,
-    // then unseen newer games are pulled next, same skip Top uses on resume.
-    games = withoutSeenExcept(games, anchorId);
-    games = orderWithUnseenCatchUp(games, anchorId);
-  } else if (restore) {
-    // On resume/load: park unseen higher-ranked games right after the target.
-    // Sort toggle passes landId with restore:false — same game, no catch-up.
-    games = orderWithUnseenCatchUp(games, resumeId);
-  }
+  // Scroll up: already seen, oldest at the top. Scroll down: not yet seen.
+  games = orderSeenHistoryAbove(games, anchorId);
   const likes = likeCount();
   const videoCount = allGames.length;
   const videoLabel = `${videoCount} ${videoCount === 1 ? 'video' : 'videos'}`;
@@ -1916,12 +1925,16 @@ function renderFeed(mode, mobileOnly, { restore = true, landId = '' } = {}) {
   activeIndex = 0;
   pipelineTip = -1;
 
-  // restore → resumeId (with catch-up); sort toggle → landId (no catch-up); else top.
+  // Land on the saved or linked game. With no target, start at the first
+  // unseen card so history stays above the fold.
   const targetId = restore ? resumeId : landId;
-  const start = targetId ? resolveStartIndex(targetId) : 0;
-  if (start > 0) {
+  const start = targetId
+    ? resolveStartIndex(targetId)
+    : games.findIndex((g) => !readSeen()[g.id]);
+  const startIndex = start > 0 ? start : 0;
+  if (startIndex > 0) {
     // Land cleanly without animating through every card (?g= / last-seen / sort keep).
-    scrollToIndex(start, { smooth: false });
+    scrollToIndex(startIndex, { smooth: false });
   } else {
     setActiveIndex(0);
     rememberActiveGame();
