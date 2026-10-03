@@ -40,28 +40,97 @@ body {
   left: 0;
   right: 0;
   z-index: 20;
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
+  gap: 8px;
   padding: calc(10px + var(--safe-top)) 16px 10px;
   background: linear-gradient(to bottom, rgba(0, 0, 0, 0.65), transparent);
   pointer-events: none;
 }
 
+.create-game {
+  justify-self: center;
+  position: relative;
+  width: 28px;
+  height: 22px;
+  pointer-events: auto;
+  text-decoration: none;
+}
+
+.create-game::before,
+.create-game::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 6px;
+}
+
+.create-game::before {
+  background: #25f4ee;
+  transform: translateX(-2px);
+}
+
+.create-game::after {
+  background: #fe2c55;
+  transform: translateX(2px);
+}
+
+.create-game-plus {
+  position: relative;
+  z-index: 1;
+  display: block;
+  width: 28px;
+  height: 22px;
+  border-radius: 6px;
+  background: #fff;
+}
+
+.create-game-plus::before,
+.create-game-plus::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  background: #161616;
+  border-radius: 1px;
+  transform: translate(-50%, -50%);
+}
+
+.create-game-plus::before {
+  width: 12px;
+  height: 2.5px;
+}
+
+.create-game-plus::after {
+  width: 2.5px;
+  height: 12px;
+}
+
+.create-game:active .create-game-plus {
+  transform: scale(0.94);
+}
+
 .logo {
+  justify-self: start;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-weight: 700;
   font-size: 15px;
   letter-spacing: 0.02em;
 }
 
 .topbar-right {
+  justify-self: end;
   display: flex;
   align-items: center;
   gap: 8px;
   pointer-events: auto;
   flex-wrap: wrap;
   justify-content: flex-end;
+  min-width: 0;
 }
 
 .meta {
