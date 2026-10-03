@@ -18,6 +18,8 @@ const playFrameEl = document.getElementById('playFrame');
 const SORT_KEY = 'opus-feed-sort';
 const MOBILE_KEY = 'opus-feed-mobile-only';
 const LAST_ID_KEY = 'opus-feed-last-id';
+/** Set after the one-time first-visit scroll nudge so it never repeats. */
+const SCROLL_HINT_SEEN_KEY = 'opus-feed-seen-scroll-hint';
 const LIKES_KEY = 'opus-feed-likes';
 const SEEN_KEY = 'opus-feed-seen';
 const SORT_TOP = 'top';
@@ -50,6 +52,10 @@ const videoListeners = new WeakMap();
 let toastTimer = 0;
 /** Skip URL/position writes during programmatic restore scroll. */
 let restoring = false;
+/** Cancels a pending first-visit scroll nudge when the feed re-renders or the user interacts. */
+let scrollHintToken = 0;
+let scrollHintTimer = 0;
+let detachScrollHintGuards = null;
 /** Cumulative seconds watched on the current card (short-clip looping). */
 let watchAccumSec = 0;
 /** Game id that watchAccumSec belongs to. */
@@ -191,6 +197,20 @@ function readLastId() {
   } catch (_) {
     return '';
   }
+}
+
+function readScrollHintSeen() {
+  try {
+    return localStorage.getItem(SCROLL_HINT_SEEN_KEY) === '1';
+  } catch (_) {
+    return false;
+  }
+}
+
+function writeScrollHintSeen() {
+  try {
+    localStorage.setItem(SCROLL_HINT_SEEN_KEY, '1');
+  } catch (_) {}
 }
 
 function writeLastId(id) {
@@ -1329,6 +1349,8 @@ function buildCard(game, index) {
     playGame(game);
   });
 
+  wireActiveVideoTap(card, game);
+
   const likeBtn = card.querySelector('.like');
   likeBtn.addEventListener('click', (e) => {
     e.stopPropagation();
@@ -1431,6 +1453,51 @@ function closePlayOverlay() {
     if (video) tryPlay(video);
   };
   setTimeout(finish, 180);
+}
+
+/**
+ * Short tap on the active card's video/poster opens Play. Pointer movement
+ * and feed scroll stay with the browser (no preventDefault); a drag does not
+ * count as a tap, and inactive cards never open.
+ */
+function wireActiveVideoTap(card, game) {
+  const video = videoOf(card);
+  if (!video) return;
+  let armed = false;
+  let startX = 0;
+  let startY = 0;
+  let startScroll = 0;
+
+  video.addEventListener(
+    'pointerdown',
+    (e) => {
+      if (e.pointerType === 'mouse' && e.button !== 0) return;
+      armed = true;
+      startX = e.clientX;
+      startY = e.clientY;
+      startScroll = feedEl.scrollTop;
+    },
+    { passive: true },
+  );
+
+  const disarm = () => {
+    armed = false;
+  };
+  video.addEventListener('pointercancel', disarm);
+  video.addEventListener('pointerup', (e) => {
+    if (Math.abs(e.clientX - startX) > 12 || Math.abs(e.clientY - startY) > 12) disarm();
+  });
+
+  video.addEventListener('click', (e) => {
+    if (!armed) return;
+    armed = false;
+    if (commentsOpen || playOverlayOpen) return;
+    if (Number(card.dataset.index) !== activeIndex) return;
+    if (Math.abs(feedEl.scrollTop - startScroll) > 8) return;
+    if (Math.abs(e.clientX - startX) > 12 || Math.abs(e.clientY - startY) > 12) return;
+    e.stopPropagation();
+    playGame(game);
+  });
 }
 
 function playGame(gameOrUrl, maybeTitle) {
@@ -1637,7 +1704,79 @@ function syncMobileUI(on) {
   mobileFilterEl.setAttribute('aria-pressed', on ? 'true' : 'false');
 }
 
+function cancelFirstVisitScrollHint() {
+  scrollHintToken++;
+  if (scrollHintTimer) {
+    clearTimeout(scrollHintTimer);
+    scrollHintTimer = 0;
+  }
+  if (detachScrollHintGuards) {
+    detachScrollHintGuards();
+    detachScrollHintGuards = null;
+  }
+}
+
+/**
+ * True only for an empty resume: no ?g=/deep link, no saved last id, and the
+ * one-time hint has not been shown. Must be sampled before render writes
+ * last-id and replaces the URL with ?g=.
+ */
+function shouldFirstVisitScrollHint() {
+  if (readScrollHintSeen()) return false;
+  if (deepLinkIdFromUrl()) return false;
+  if (readLastId()) return false;
+  return true;
+}
+
+/**
+ * After the feed has landed on its start card, smoothly advance exactly one
+ * card so a first-time visitor sees the vertical feed, then stay there.
+ * Resume, deep link, and Top/New keep-same-game never call this.
+ */
+function scheduleFirstVisitScrollHint() {
+  // Caller sampled shouldFirstVisitScrollHint() before render. Do not re-read
+  // last-id or ?g= here: landing already persisted both.
+  if (cards().length < 2) return;
+
+  const token = ++scrollHintToken;
+  const startIndex = activeIndex;
+  const startTop = feedEl.scrollTop;
+
+  const detach = () => {
+    window.removeEventListener('pointerdown', onIntent, true);
+    window.removeEventListener('wheel', onIntent, true);
+    window.removeEventListener('keydown', onIntent, true);
+    if (detachScrollHintGuards === detach) detachScrollHintGuards = null;
+  };
+  const onIntent = () => {
+    if (token !== scrollHintToken) {
+      detach();
+      return;
+    }
+    cancelFirstVisitScrollHint();
+  };
+  detachScrollHintGuards = detach;
+  window.addEventListener('pointerdown', onIntent, true);
+  window.addEventListener('wheel', onIntent, { capture: true, passive: true });
+  window.addEventListener('keydown', onIntent, true);
+
+  scrollHintTimer = window.setTimeout(() => {
+    if (token !== scrollHintToken) return;
+    detach();
+    scrollHintTimer = 0;
+    if (readScrollHintSeen()) return;
+    if (commentsOpen || playOverlayOpen) return;
+    if (document.visibilityState === 'hidden') return;
+    if (cards().length < startIndex + 2) return;
+    if (activeIndex !== startIndex) return;
+    if (Math.abs(feedEl.scrollTop - startTop) > 8) return;
+    writeScrollHintSeen();
+    scrollToIndex(startIndex + 1, { smooth: true });
+  }, 700);
+}
+
 function renderFeed(mode, mobileOnly, { restore = true, landId = '' } = {}) {
+  cancelFirstVisitScrollHint();
   let games = visibleGames(mode, mobileOnly);
   const resumeId = restore ? resumeIdForGames(games) : '';
   // On resume/load: park unseen higher-ranked games right after the target.
@@ -1769,7 +1908,9 @@ async function init() {
   syncMobileUI(mobileOnly);
   wireSortToggle();
   wireMobileFilter();
+  const firstVisitNudge = shouldFirstVisitScrollHint();
   renderFeed(mode, mobileOnly, { restore: true });
+  if (firstVisitNudge) scheduleFirstVisitScrollHint();
 
   wireKeyboard();
   wireVisibility();

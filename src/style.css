@@ -224,6 +224,9 @@ body {
   object-fit: cover;
   background: transparent;
   z-index: 0;
+  cursor: pointer;
+  /* Vertical drags belong to the feed; a stationary tap is handled in JS. */
+  touch-action: pan-y;
 }
 
 .card.video-ready .clip {
