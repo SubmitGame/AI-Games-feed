@@ -313,6 +313,16 @@ function resumeIdForGames(games) {
  * card. Seen games above remain above, and an empty seen set follows the
  * same path without special handling.
  */
+/**
+ * Drop locally viewed games, but keep the card we are landing on so a resume
+ * or a shared link does not vanish. Used by New only; Top still shows seen
+ * games and only reorders them.
+ */
+function withoutSeenExcept(games, keepId) {
+  const seen = readSeen();
+  return games.filter((g) => g.id === keepId || !seen[g.id]);
+}
+
 function orderWithUnseenCatchUp(games, resumeId) {
   if (!resumeId || !games.length) return games;
   const idx = games.findIndex((g) => g.id === resumeId);
@@ -1854,11 +1864,20 @@ function scheduleFirstVisitScrollHint() {
 
 function renderFeed(mode, mobileOnly, { restore = true, landId = '' } = {}) {
   cancelFirstVisitScrollHint();
-  let games = visibleGames(mode, mobileOnly);
+  const sorted = visibleGames(mode, mobileOnly);
+  let games = sorted;
   const resumeId = restore ? resumeIdForGames(games) : '';
-  // On resume/load: park unseen higher-ranked games right after the target.
-  // Sort toggle passes landId with restore:false — same game, no catch-up.
-  if (restore) games = orderWithUnseenCatchUp(games, resumeId);
+  const anchorId = restore ? resumeId : landId;
+  if (mode === SORT_NEW) {
+    // Latest hides games already viewed in this feed. The landing card stays,
+    // then unseen newer games are pulled next, same skip Top uses on resume.
+    games = withoutSeenExcept(games, anchorId);
+    games = orderWithUnseenCatchUp(games, anchorId);
+  } else if (restore) {
+    // On resume/load: park unseen higher-ranked games right after the target.
+    // Sort toggle passes landId with restore:false — same game, no catch-up.
+    games = orderWithUnseenCatchUp(games, resumeId);
+  }
   const likes = likeCount();
   const videoCount = allGames.length;
   const videoLabel = `${videoCount} ${videoCount === 1 ? 'video' : 'videos'}`;
@@ -1872,6 +1891,11 @@ function renderFeed(mode, mobileOnly, { restore = true, landId = '' } = {}) {
   resetWatchAccum(null);
 
   if (!games.length) {
+    if (mode === SORT_NEW && sorted.length) {
+      feedEl.innerHTML = '';
+      feedEl.appendChild(buildEndCard());
+      return;
+    }
     const msg = mobileOnly
       ? 'No mobile games tagged yet'
       : 'No gameplay videos found.';
