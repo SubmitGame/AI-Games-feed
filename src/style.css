@@ -40,20 +40,23 @@ body {
   left: 0;
   right: 0;
   z-index: 20;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  display: flex;
   align-items: center;
-  gap: 8px;
+  justify-content: space-between;
+  gap: 12px;
   padding: calc(10px + var(--safe-top)) 16px 10px;
   background: linear-gradient(to bottom, rgba(0, 0, 0, 0.65), transparent);
   pointer-events: none;
 }
 
 .create-game {
-  justify-self: center;
-  position: relative;
-  width: 28px;
-  height: 22px;
+  position: fixed;
+  left: 50%;
+  bottom: calc(16px + max(var(--nav-clearance), var(--safe-bottom)));
+  z-index: 22;
+  width: 46px;
+  height: 32px;
+  transform: translateX(-50%);
   pointer-events: auto;
   text-decoration: none;
 }
@@ -80,9 +83,9 @@ body {
   position: relative;
   z-index: 1;
   display: block;
-  width: 28px;
-  height: 22px;
-  border-radius: 6px;
+  width: 46px;
+  height: 32px;
+  border-radius: 8px;
   background: #fff;
 }
 
@@ -98,13 +101,13 @@ body {
 }
 
 .create-game-plus::before {
-  width: 12px;
-  height: 2.5px;
+  width: 16px;
+  height: 3px;
 }
 
 .create-game-plus::after {
-  width: 2.5px;
-  height: 12px;
+  width: 3px;
+  height: 16px;
 }
 
 .create-game:active .create-game-plus {
@@ -932,7 +935,7 @@ body.play-overlay-open .feed {
 .toast {
   position: fixed;
   left: 50%;
-  bottom: calc(24px + max(var(--nav-clearance), var(--safe-bottom)));
+  bottom: calc(64px + max(var(--nav-clearance), var(--safe-bottom)));
   transform: translateX(-50%) translateY(12px);
   z-index: 40;
   padding: 10px 16px;
