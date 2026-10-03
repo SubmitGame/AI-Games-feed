@@ -1742,26 +1742,27 @@ function cancelFirstVisitScrollHint() {
 }
 
 /**
- * True only for an empty resume: no ?g=/deep link, no saved last id, and the
- * one-time hint has not been shown. Must be sampled before render writes
- * last-id and replaces the URL with ?g=.
+ * True when the one-time scroll hint has not been shown and the incoming URL
+ * has no deep link (?g= / ?game=). A saved last-id (resume) still nudges —
+ * only an incoming shared/deep link stays put. Must be sampled before render
+ * writes last-id and replaces the URL with ?g=.
  */
 function shouldFirstVisitScrollHint() {
   if (readScrollHintSeen()) return false;
   if (deepLinkIdFromUrl()) return false;
-  if (readLastId()) return false;
   return true;
 }
 
 /**
  * After the feed has landed on its start card, smoothly advance exactly one
- * card so a first-time visitor sees the vertical feed, then stay there.
+ * card so the visitor sees the vertical feed, then stay there.
  * Only nudge when the next clip is actually playable (see
  * nextClipReadyForScrollHint). If it is not ready yet, wait until it is or
  * until SCROLL_HINT_READY_CAP_MS. Never scroll onto an unplayable clip.
  * The seen flag is set only after a successful nudge or after that wait
- * times out — not when the user cancels. Resume, deep link, and Top/New
- * keep-same-game never call this.
+ * times out — not when the user cancels. Incoming deep links and Top/New
+ * keep-same-game never call this; resume with a saved last-id may, when the
+ * pre-render sample had no incoming ?g=.
  */
 function scheduleFirstVisitScrollHint() {
   // Caller sampled shouldFirstVisitScrollHint() before render. Do not re-read
