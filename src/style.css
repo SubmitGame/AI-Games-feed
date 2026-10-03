@@ -52,9 +52,9 @@ body {
 .create-game {
   position: fixed;
   left: 50%;
-  /* Center on the Play pill: its bottom edge is card-bottom-gap + nav,
-     and the pill is ~10px taller than this button. */
-  bottom: calc(var(--card-bottom-gap) + max(var(--nav-clearance), var(--safe-bottom)) + 5px);
+  /* Play sits in a 100vh card; this button is fixed to the visible viewport.
+     Subtract the chrome gap so the two centers meet, and drop it when the bar hides. */
+  bottom: calc(var(--card-bottom-gap) + max(var(--nav-clearance), var(--safe-bottom)) + 5px - (100vh - 100dvh));
   z-index: 22;
   width: 46px;
   height: 32px;
