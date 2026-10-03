@@ -18,8 +18,6 @@ const playFrameEl = document.getElementById('playFrame');
 const SORT_KEY = 'opus-feed-sort';
 const MOBILE_KEY = 'opus-feed-mobile-only';
 const LAST_ID_KEY = 'opus-feed-last-id';
-/** Set after the one-time first-visit scroll nudge so it never repeats. */
-const SCROLL_HINT_SEEN_KEY = 'opus-feed-seen-scroll-hint';
 const LIKES_KEY = 'opus-feed-likes';
 const SEEN_KEY = 'opus-feed-seen';
 const SORT_TOP = 'top';
@@ -28,15 +26,6 @@ const PUBLIC_SITE_ORIGIN = 'https://games.omgithub.com';
 
 /** Max videos with src attached (current + ahead). */
 const PRELOAD_WINDOW = 5;
-/** Floor before the one-time first-visit scroll, so the landing card can paint. */
-const SCROLL_HINT_DELAY_MS = 700;
-/**
- * If the next clip still is not playable by this long after landing, stay on
- * the first card and remember the hint so later visits do not retry it.
- */
-const SCROLL_HINT_READY_CAP_MS = 8000;
-/** ~1s buffered, the nudge's shorter cousin of BUFFER_AHEAD_SEC. */
-const SCROLL_HINT_BUFFER_SEC = 1;
 /** Play destinations to warm for the active card and the next card. */
 const PLAY_NAV_PRELOAD_WINDOW = 2;
 /** Seconds of buffer before advancing the preload chain. */
@@ -61,11 +50,6 @@ const videoListeners = new WeakMap();
 let toastTimer = 0;
 /** Skip URL/position writes during programmatic restore scroll. */
 let restoring = false;
-/** Cancels a pending first-visit scroll nudge when the feed re-renders or the user interacts. */
-let scrollHintToken = 0;
-let scrollHintTimer = 0;
-let scrollHintPoll = 0;
-let detachScrollHintGuards = null;
 /** Cumulative seconds watched on the current card (short-clip looping). */
 let watchAccumSec = 0;
 /** Game id that watchAccumSec belongs to. */
@@ -207,20 +191,6 @@ function readLastId() {
   } catch (_) {
     return '';
   }
-}
-
-function readScrollHintSeen() {
-  try {
-    return localStorage.getItem(SCROLL_HINT_SEEN_KEY) === '1';
-  } catch (_) {
-    return false;
-  }
-}
-
-function writeScrollHintSeen() {
-  try {
-    localStorage.setItem(SCROLL_HINT_SEEN_KEY, '1');
-  } catch (_) {}
 }
 
 function writeLastId(id) {
@@ -521,17 +491,6 @@ function hasEnoughBuffer(video) {
 
 function canStartPlayback(video) {
   return video && video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA;
-}
-
-/**
- * Next clip is far enough along to scroll onto it: an attached src and either
- * HAVE_CURRENT_DATA (same gate as canStartPlayback) or ~1s buffered ahead
- * (same idea as hasEnoughBuffer, with SCROLL_HINT_BUFFER_SEC).
- */
-function nextClipReadyForScrollHint(video) {
-  if (!video || !video.getAttribute('src')) return false;
-  if (video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) return true;
-  return bufferedAhead(video) >= SCROLL_HINT_BUFFER_SEC;
 }
 
 function isPlaying(video) {
@@ -1752,135 +1711,7 @@ function syncMobileUI(on) {
   mobileFilterEl.setAttribute('aria-pressed', on ? 'true' : 'false');
 }
 
-function cancelFirstVisitScrollHint() {
-  scrollHintToken++;
-  if (scrollHintTimer) {
-    clearTimeout(scrollHintTimer);
-    scrollHintTimer = 0;
-  }
-  if (scrollHintPoll) {
-    clearInterval(scrollHintPoll);
-    scrollHintPoll = 0;
-  }
-  if (detachScrollHintGuards) {
-    detachScrollHintGuards();
-    detachScrollHintGuards = null;
-  }
-}
-
-/**
- * True when the one-time scroll hint has not been shown and the incoming URL
- * has no deep link (?g= / ?game=). A saved last-id (resume) still nudges —
- * only an incoming shared/deep link stays put. Must be sampled before render
- * writes last-id and replaces the URL with ?g=.
- */
-function shouldFirstVisitScrollHint() {
-  if (readScrollHintSeen()) return false;
-  if (deepLinkIdFromUrl()) return false;
-  return true;
-}
-
-/**
- * After the feed has landed on its start card, smoothly advance exactly one
- * card so the visitor sees the vertical feed, then stay there.
- * Only nudge when the next clip is actually playable (see
- * nextClipReadyForScrollHint). If it is not ready yet, wait until it is or
- * until SCROLL_HINT_READY_CAP_MS. Never scroll onto an unplayable clip.
- * The seen flag is set only after a successful nudge or after that wait
- * times out — not when the user cancels. Incoming deep links and Top/New
- * keep-same-game never call this; resume with a saved last-id may, when the
- * pre-render sample had no incoming ?g=.
- */
-function scheduleFirstVisitScrollHint() {
-  // Caller sampled shouldFirstVisitScrollHint() before render. Do not re-read
-  // last-id or ?g= here: landing already persisted both.
-  if (cards().length < 2) return;
-
-  const token = ++scrollHintToken;
-  const startIndex = activeIndex;
-  const startTop = feedEl.scrollTop;
-  const startedAt = performance.now();
-  const nextVideo = videoOf(cards()[startIndex + 1]);
-
-  const detach = () => {
-    window.removeEventListener('pointerdown', onIntent, true);
-    window.removeEventListener('wheel', onIntent, true);
-    window.removeEventListener('keydown', onIntent, true);
-    if (nextVideo) {
-      nextVideo.removeEventListener('loadeddata', onMedia);
-      nextVideo.removeEventListener('canplay', onMedia);
-      nextVideo.removeEventListener('canplaythrough', onMedia);
-      nextVideo.removeEventListener('progress', onMedia);
-    }
-    if (scrollHintTimer) {
-      clearTimeout(scrollHintTimer);
-      scrollHintTimer = 0;
-    }
-    if (scrollHintPoll) {
-      clearInterval(scrollHintPoll);
-      scrollHintPoll = 0;
-    }
-    if (detachScrollHintGuards === detach) detachScrollHintGuards = null;
-  };
-  const onIntent = () => {
-    if (token !== scrollHintToken) {
-      detach();
-      return;
-    }
-    // Touch / wheel / key cancels the nudge and does not mark it seen.
-    cancelFirstVisitScrollHint();
-  };
-  const stillOnStartCard = () => {
-    if (token !== scrollHintToken) return false;
-    if (commentsOpen || playOverlayOpen) return false;
-    if (document.visibilityState === 'hidden') return false;
-    if (cards().length < startIndex + 2) return false;
-    if (activeIndex !== startIndex) return false;
-    if (Math.abs(feedEl.scrollTop - startTop) > 8) return false;
-    return true;
-  };
-  const tryNudge = () => {
-    if (token !== scrollHintToken) return;
-    if (readScrollHintSeen()) {
-      detach();
-      return;
-    }
-    const elapsed = performance.now() - startedAt;
-    // Keep the preload chain moving so the next clip can reach the gate.
-    maybeAdvancePipeline();
-    const ready = nextClipReadyForScrollHint(videoOf(cards()[startIndex + 1]));
-    if (elapsed >= SCROLL_HINT_DELAY_MS && ready && stillOnStartCard()) {
-      writeScrollHintSeen();
-      detach();
-      scrollToIndex(startIndex + 1, { smooth: true });
-      return;
-    }
-    if (elapsed >= SCROLL_HINT_READY_CAP_MS) {
-      detach();
-      // Gave up because the next clip never became playable. Remember that
-      // so a later load does not retry the nudge. Do not scroll.
-      if (token === scrollHintToken) writeScrollHintSeen();
-    }
-  };
-  const onMedia = () => tryNudge();
-
-  detachScrollHintGuards = detach;
-  window.addEventListener('pointerdown', onIntent, true);
-  window.addEventListener('wheel', onIntent, { capture: true, passive: true });
-  window.addEventListener('keydown', onIntent, true);
-  if (nextVideo) {
-    nextVideo.addEventListener('loadeddata', onMedia);
-    nextVideo.addEventListener('canplay', onMedia);
-    nextVideo.addEventListener('canplaythrough', onMedia);
-    nextVideo.addEventListener('progress', onMedia);
-  }
-
-  scrollHintPoll = window.setInterval(tryNudge, 200);
-  scrollHintTimer = window.setTimeout(tryNudge, SCROLL_HINT_DELAY_MS);
-}
-
 function renderFeed(mode, mobileOnly, { restore = true, landId = '' } = {}) {
-  cancelFirstVisitScrollHint();
   const sorted = visibleGames(mode, mobileOnly);
   let games = sorted;
   const resumeId = restore ? resumeIdForGames(games) : '';
@@ -2022,9 +1853,7 @@ async function init() {
   syncMobileUI(mobileOnly);
   wireSortToggle();
   wireMobileFilter();
-  const firstVisitNudge = shouldFirstVisitScrollHint();
   renderFeed(mode, mobileOnly, { restore: true });
-  if (firstVisitNudge) scheduleFirstVisitScrollHint();
 
   wireKeyboard();
   wireVisibility();
