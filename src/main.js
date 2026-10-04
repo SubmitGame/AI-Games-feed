@@ -54,6 +54,12 @@ const videoListeners = new WeakMap();
 let toastTimer = 0;
 /** Skip URL/position writes during programmatic restore scroll. */
 let restoring = false;
+/** Skip history pushes while applying a back/forward navigation. */
+let historySilent = false;
+/** True after the landing game replaces the current history entry. */
+let feedHistorySeeded = false;
+/** Ignore the fullscreen exit we started ourselves. */
+let fullscreenExitFromUs = false;
 /** Cumulative seconds watched on the current card (short-clip looping). */
 let watchAccumSec = 0;
 /** Game id that watchAccumSec belongs to. */
@@ -462,17 +468,126 @@ function syncCanonicalUrl(id = '') {
   if (ogUrl) ogUrl.content = url;
 }
 
+function currentGameId() {
+  return cards()[activeIndex]?.dataset.id || '';
+}
+
 function syncUrlForGame(id) {
-  if (!id || restoring) return;
+  if (!id || restoring || historySilent) return;
   const next = shareUrlFor(id);
-  if (next !== window.location.href) {
-    try {
+  try {
+    // Landing card replaces the entry so the first back still leaves the site.
+    // Later cards push, so back returns to the previous game.
+    if (!feedHistorySeeded) {
       history.replaceState({ g: id }, '', next);
-    } catch (_) {
-      // Cross-origin history changes are not allowed; sharing still uses next.
+      feedHistorySeeded = true;
+    } else if (next !== window.location.href) {
+      history.pushState({ g: id }, '', next);
     }
+  } catch (_) {
+    // Cross-origin history changes are not allowed; sharing still uses next.
   }
   syncCanonicalUrl(id);
+}
+
+function pushOverlayHistory(kind) {
+  if (historySilent) return;
+  const id = currentGameId();
+  try {
+    history.pushState({ opus: kind, g: id }, '', window.location.href);
+  } catch (_) {}
+}
+
+function requestGameFullscreen() {
+  const el = playFrameEl || playOverlayEl;
+  if (!el) return;
+  const req = el.requestFullscreen || el.webkitRequestFullscreen;
+  if (!req) return;
+  try {
+    const result = req.call(el);
+    if (result && typeof result.catch === 'function') result.catch(() => {});
+  } catch (_) {}
+}
+
+function exitGameFullscreen() {
+  const active = document.fullscreenElement || document.webkitFullscreenElement;
+  if (!active) return;
+  fullscreenExitFromUs = true;
+  const exit = document.exitFullscreen || document.webkitExitFullscreen;
+  if (!exit) {
+    fullscreenExitFromUs = false;
+    return;
+  }
+  try {
+    const result = exit.call(document);
+    const clear = () => {
+      fullscreenExitFromUs = false;
+    };
+    if (result && typeof result.then === 'function') result.then(clear, clear);
+    else requestAnimationFrame(clear);
+  } catch (_) {
+    fullscreenExitFromUs = false;
+  }
+}
+
+function goToGameFromHistory(id) {
+  if (!id) return;
+  const list = cards();
+  let index = -1;
+  list.forEach((card, i) => {
+    if (index < 0 && card.dataset.id === id) index = i;
+  });
+  if (index < 0 || index === activeIndex) return;
+  historySilent = true;
+  try {
+    scrollToIndex(index, { smooth: false });
+  } finally {
+    historySilent = false;
+  }
+}
+
+/** Back closes the top layer: play, then comments, then the previous game. */
+function onHistoryPop() {
+  const state = history.state || {};
+  if (playOverlayOpen && state.opus !== 'play') closePlayOverlay();
+  if (commentsOpen && state.opus !== 'comments' && state.opus !== 'play') {
+    closeCommentsSheet();
+  }
+  if (state.opus) return;
+  goToGameFromHistory(state.g || deepLinkIdFromUrl());
+}
+
+function dismissPlayOverlay() {
+  if (history.state && history.state.opus === 'play') {
+    history.back();
+    return;
+  }
+  closePlayOverlay();
+}
+
+function dismissCommentsSheet() {
+  if (history.state && history.state.opus === 'comments') {
+    history.back();
+    return;
+  }
+  closeCommentsSheet();
+}
+
+function wireHistoryNavigation() {
+  window.addEventListener('popstate', onHistoryPop);
+  const onFullscreenEnd = () => {
+    const active = document.fullscreenElement || document.webkitFullscreenElement;
+    if (active) return;
+    if (fullscreenExitFromUs) return;
+    // Android back often only exits fullscreen. Pop the play entry too.
+    if (playOverlayOpen && history.state && history.state.opus === 'play') {
+      history.back();
+      return;
+    }
+    if (playOverlayOpen) closePlayOverlay();
+  };
+  document.addEventListener('fullscreenchange', onFullscreenEnd);
+  document.addEventListener('webkitfullscreenchange', onFullscreenEnd);
 }
 
 function cards() {
@@ -1165,6 +1280,7 @@ function openCommentsSheet(game) {
   requestAnimationFrame(() => {
     commentsSheetEl.classList.add('open');
   });
+  pushOverlayHistory('comments');
 }
 
 function closeCommentsSheet() {
@@ -1195,7 +1311,7 @@ function wireCommentsSheet() {
   commentsSheetEl.querySelectorAll('[data-close-comments]').forEach((el) => {
     el.addEventListener('click', (e) => {
       e.stopPropagation();
-      closeCommentsSheet();
+      dismissCommentsSheet();
     });
   });
 
@@ -1222,7 +1338,7 @@ function wireCommentsSheet() {
     commentsSwipeCurrentY = 0;
     if (panel) panel.style.transition = '';
     if (dy > 90) {
-      closeCommentsSheet();
+      dismissCommentsSheet();
     } else {
       setCommentsSheetOffset(0);
     }
@@ -1669,11 +1785,15 @@ function openPlayOverlay(url, title = 'Play game') {
   requestAnimationFrame(() => {
     playOverlayEl.classList.add('open');
   });
+  // Same tap as Play: browser fullscreen hides Chrome's bars. Back exits it.
+  requestGameFullscreen();
+  pushOverlayHistory('play');
 }
 
 function closePlayOverlay() {
   if (!playOverlayEl || !playOverlayOpen) return;
   playOverlayOpen = false;
+  exitGameFullscreen();
   playOverlayEl.classList.remove('open');
   document.body.classList.remove('play-overlay-open');
   playOverlayEl.setAttribute('aria-hidden', 'true');
@@ -1699,21 +1819,23 @@ function closePlayOverlay() {
 }
 
 /**
- * Short tap on the active card's video/poster opens Play. Pointer movement
- * and feed scroll stay with the browser (no preventDefault); a drag does not
- * count as a tap, and inactive cards never open.
+ * Short tap on the active card's video opens Play. Long-press toggles fit mode.
+ * Chrome often fires pointercancel on video long-press (context-menu gesture) —
+ * that must NOT cancel the hold timer, or a hold after scrolling looks like a no-op.
  */
 function wireActiveVideoTap(card, game) {
   const video = videoOf(card);
   if (!video) return;
   suppressVideoContextMenu(video);
   const LONG_PRESS_MS = 450;
-  let armed = false;
+  let tapArmed = false; // short-tap → Play
+  let holdAlive = false; // long-press timer still eligible
   let longPressFired = false;
   let holdTimer = 0;
   let startX = 0;
   let startY = 0;
   let startScroll = 0;
+  let startTime = 0;
 
   const clearHold = () => {
     if (holdTimer) {
@@ -1722,33 +1844,41 @@ function wireActiveVideoTap(card, game) {
     }
   };
 
-  const disarm = () => {
-    armed = false;
+  const cardIsCurrent = () => {
+    const idx = Number(card.dataset.index);
+    if (idx === activeIndex) return true;
+    // After scroll, activeIndex can lag one frame behind scroll-snap.
+    return idx === currentIndexFromScroll();
+  };
+
+  const fireLongPress = () => {
+    if (longPressFired || !holdAlive) return;
+    if (commentsOpen || playOverlayOpen) return;
+    if (!cardIsCurrent()) return;
+    // Real scroll-away during the hold (not snap settle).
+    if (Math.abs(feedEl.scrollTop - startScroll) > 48) return;
+    longPressFired = true;
+    holdAlive = false;
+    tapArmed = false;
     clearHold();
+    toggleFitMode(); // cooldown inside → exactly once
   };
 
   video.addEventListener(
     'pointerdown',
     (e) => {
       if (e.pointerType === 'mouse' && e.button !== 0) return;
-      armed = true;
+      tapArmed = true;
+      holdAlive = true;
       longPressFired = false;
       startX = e.clientX;
       startY = e.clientY;
       startScroll = feedEl.scrollTop;
+      startTime = Date.now();
       clearHold();
       holdTimer = window.setTimeout(() => {
         holdTimer = 0;
-        if (!armed) return;
-        if (commentsOpen || playOverlayOpen) return;
-        if (Number(card.dataset.index) !== activeIndex) return;
-        if (Math.abs(feedEl.scrollTop - startScroll) > 8) return;
-        // Long-press toggles crop ↔ full frame; suppress the following tap-to-play.
-        // Mark fired before toggle so a second stacked timer cannot also arm play.
-        longPressFired = true;
-        armed = false;
-        clearHold();
-        toggleFitMode();
+        fireLongPress();
       }, LONG_PRESS_MS);
     },
     { passive: true },
@@ -1757,39 +1887,59 @@ function wireActiveVideoTap(card, game) {
   video.addEventListener(
     'pointermove',
     (e) => {
-      if (!armed || longPressFired) return;
-      if (Math.abs(e.clientX - startX) > 12 || Math.abs(e.clientY - startY) > 12) {
-        disarm();
+      if (longPressFired) return;
+      if (Math.abs(e.clientX - startX) > 14 || Math.abs(e.clientY - startY) > 14) {
+        // Finger dragged — treat as scroll/gesture, not hold or tap.
+        holdAlive = false;
+        tapArmed = false;
+        clearHold();
       }
     },
     { passive: true },
   );
 
-  video.addEventListener('pointercancel', disarm);
+  // Do NOT clear the hold timer on pointercancel: mobile Chrome cancels the
+  // pointer when recognizing a video long-press / context menu. The timer
+  // (or pointerup fallback) still completes the fit toggle.
+  video.addEventListener('pointercancel', () => {
+    tapArmed = false; // cancel short-tap Play; keep holdAlive for the timer
+  });
+
   video.addEventListener('pointerup', (e) => {
-    clearHold();
     if (longPressFired) {
-      armed = false;
+      tapArmed = false;
+      holdAlive = false;
+      clearHold();
       return;
     }
-    if (Math.abs(e.clientX - startX) > 12 || Math.abs(e.clientY - startY) > 12) disarm();
+    const heldMs = Date.now() - startTime;
+    // If Chrome cancelled the timer path oddly, honor a completed hold on up.
+    if (holdAlive && heldMs >= LONG_PRESS_MS) {
+      fireLongPress();
+      return;
+    }
+    clearHold();
+    holdAlive = false;
+    if (Math.abs(e.clientX - startX) > 14 || Math.abs(e.clientY - startY) > 14) {
+      tapArmed = false;
+    }
   });
 
   video.addEventListener('click', (e) => {
     // Long-press already toggled fit mode — never open Play on that gesture.
     if (longPressFired) {
       longPressFired = false;
-      armed = false;
+      tapArmed = false;
       e.preventDefault();
       e.stopPropagation();
       return;
     }
-    if (!armed) return;
-    armed = false;
+    if (!tapArmed) return;
+    tapArmed = false;
     if (commentsOpen || playOverlayOpen) return;
-    if (Number(card.dataset.index) !== activeIndex) return;
+    if (!cardIsCurrent()) return;
     if (Math.abs(feedEl.scrollTop - startScroll) > 8) return;
-    if (Math.abs(e.clientX - startX) > 12 || Math.abs(e.clientY - startY) > 12) return;
+    if (Math.abs(e.clientX - startX) > 14 || Math.abs(e.clientY - startY) > 14) return;
     e.stopPropagation();
     playGame(game);
   });
@@ -1840,7 +1990,7 @@ function wirePlayOverlay() {
     if (!playOverlayOpen) return;
     e.preventDefault();
     e.stopPropagation();
-    closePlayOverlay();
+    dismissPlayOverlay();
   };
 
   const activateOpen = (e) => {
@@ -1889,7 +2039,7 @@ function wirePlayOverlay() {
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && playOverlayOpen) {
       e.preventDefault();
-      closePlayOverlay();
+      dismissPlayOverlay();
     }
   });
 }
@@ -2134,6 +2284,7 @@ async function init() {
   wireAudioGesture();
   wireCommentsSheet();
   wirePlayOverlay();
+  wireHistoryNavigation();
 
   const mode = readSortMode();
   const mobileOnly = readMobileOnly();

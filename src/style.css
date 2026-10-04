@@ -1194,3 +1194,10 @@ body.play-overlay-open .feed {
   min-height: 0;
 }
 
+.play-overlay:fullscreen,
+.play-overlay-frame:fullscreen {
+  width: 100%;
+  height: 100%;
+  background: #000;
+  border: 0;
+}
