@@ -20,8 +20,12 @@ const MOBILE_KEY = 'opus-feed-mobile-only';
 const LAST_ID_KEY = 'opus-feed-last-id';
 const LIKES_KEY = 'opus-feed-likes';
 const SEEN_KEY = 'opus-feed-seen';
+const FIT_KEY = 'opus-feed-fit-mode';
 const SORT_TOP = 'top';
 const SORT_NEW = 'new';
+/** Cover = old cropped full-bleed; letterbox = contain + blurred bg fill. */
+const FIT_COVER = 'cover';
+const FIT_LETTERBOX = 'letterbox';
 const PUBLIC_SITE_ORIGIN = 'https://games.omgithub.com';
 
 /** Max videos with src attached (current + ahead). */
@@ -118,6 +122,55 @@ function readMobileOnly() {
   } catch (_) {
     return false;
   }
+}
+
+function readFitMode() {
+  try {
+    const v = localStorage.getItem(FIT_KEY);
+    if (v === FIT_COVER || v === FIT_LETTERBOX) return v;
+  } catch (_) {}
+  // Default: old cropped cover. Letterbox only after the user opts in.
+  return FIT_COVER;
+}
+
+function writeFitMode(mode) {
+  try {
+    localStorage.setItem(FIT_KEY, mode);
+  } catch (_) {}
+}
+
+function letterboxFitEnabled() {
+  return readFitMode() === FIT_LETTERBOX;
+}
+
+function syncFitToggleTitle() {
+  const logo = document.querySelector('.logo');
+  if (!logo) return;
+  const mode = readFitMode();
+  logo.setAttribute(
+    'aria-label',
+    mode === FIT_LETTERBOX
+      ? 'AI Games Feed — full frame mode. Tap for cropped cover.'
+      : 'AI Games Feed — cropped cover mode. Tap for full frame.',
+  );
+}
+
+/** Ignore duplicate toggles from the same gesture (stacked listeners / echo events). */
+let lastFitToggleAt = 0;
+const FIT_TOGGLE_COOLDOWN_MS = 500;
+
+/** Toggle cover ↔ letterbox and re-apply active card letterbox state. */
+function toggleFitMode() {
+  const now = Date.now();
+  if (now - lastFitToggleAt < FIT_TOGGLE_COOLDOWN_MS) {
+    return readFitMode();
+  }
+  lastFitToggleAt = now;
+  const next = letterboxFitEnabled() ? FIT_COVER : FIT_LETTERBOX;
+  writeFitMode(next);
+  syncFitToggleTitle();
+  syncAllLetterbox();
+  return next;
 }
 
 function effectiveMuted() {
@@ -463,6 +516,154 @@ function posterOf(card) {
   return card?.querySelector('.poster');
 }
 
+function clipBgOf(card) {
+  return card?.querySelector('video.clip-bg');
+}
+
+/** Block Chrome's native video long-press menu on feed clips only. */
+function suppressVideoContextMenu(el) {
+  if (!el || el.__ctxMenuSuppressed) return;
+  el.__ctxMenuSuppressed = true;
+  el.addEventListener(
+    'contextmenu',
+    (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+    },
+    { capture: true },
+  );
+}
+
+/** True when contain would not letterbox (portrait clip on phone, landscape in wide window). */
+function clipFillsCard(video, card) {
+  const vw = video?.videoWidth || 0;
+  const vh = video?.videoHeight || 0;
+  if (!vw || !vh) return true;
+  const cw = card?.clientWidth || 0;
+  const ch = card?.clientHeight || 0;
+  if (!cw || !ch) return true;
+  // Wider than the card → contain leaves bars; use letterbox + blur fill.
+  return vw / vh <= cw / ch + 0.02;
+}
+
+function ensureClipBg(card) {
+  let bg = clipBgOf(card);
+  if (bg) {
+    suppressVideoContextMenu(bg);
+    return bg;
+  }
+  const video = videoOf(card);
+  if (!video) return null;
+  bg = document.createElement('video');
+  bg.className = 'clip-bg';
+  bg.muted = true;
+  bg.defaultMuted = true;
+  bg.playsInline = true;
+  bg.setAttribute('playsinline', '');
+  bg.setAttribute('webkit-playsinline', '');
+  bg.setAttribute('muted', '');
+  bg.preload = 'auto';
+  bg.disablePictureInPicture = true;
+  bg.setAttribute('aria-hidden', 'true');
+  bg.tabIndex = -1;
+  card.insertBefore(bg, card.firstChild);
+  suppressVideoContextMenu(bg);
+  return bg;
+}
+
+function teardownClipBg(card) {
+  if (!card) return;
+  const bg = clipBgOf(card);
+  card.classList.remove('bg-ready');
+  if (!bg) return;
+  try {
+    bg.pause();
+  } catch (_) {}
+  bg.removeAttribute('src');
+  try {
+    bg.load();
+  } catch (_) {}
+  bg.remove();
+}
+
+function syncBgPlayback(card) {
+  const video = videoOf(card);
+  const bg = clipBgOf(card);
+  if (!video || !bg || !card.classList.contains('letterbox')) return;
+  bg.muted = true;
+  try {
+    const vt = video.currentTime || 0;
+    if (Math.abs((bg.currentTime || 0) - vt) > 0.3) bg.currentTime = vt;
+  } catch (_) {}
+  if (!video.paused && !video.ended) {
+    const p = bg.play();
+    if (p?.catch) p.catch(() => {});
+  } else {
+    try {
+      bg.pause();
+    } catch (_) {}
+  }
+}
+
+function markBgReady(card) {
+  const bg = clipBgOf(card);
+  if (!bg || !card.classList.contains('letterbox')) return;
+  if (bg.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) return;
+  card.classList.add('bg-ready');
+  const poster = posterOf(card);
+  if (poster && card.classList.contains('video-ready')) {
+    poster.classList.add('hidden');
+  }
+  syncBgPlayback(card);
+}
+
+/**
+ * Active card only: if the clip is wider than the card, contain the foreground
+ * and play one blurred cover copy behind it. Inactive cards stay cover-only.
+ */
+function syncLetterbox(card, isActive) {
+  if (!card) return;
+  const video = videoOf(card);
+  // Old portrait cover mode: never letterbox / blur fill.
+  if (!letterboxFitEnabled() || !isActive || !video) {
+    card.classList.remove('letterbox');
+    teardownClipBg(card);
+    return;
+  }
+  if (!video.videoWidth || !video.videoHeight) {
+    // Metadata not ready yet — keep current mode until loadedmetadata.
+    return;
+  }
+  if (clipFillsCard(video, card)) {
+    card.classList.remove('letterbox');
+    teardownClipBg(card);
+    return;
+  }
+
+  card.classList.add('letterbox');
+  const bg = ensureClipBg(card);
+  if (!bg) return;
+  const url = video.getAttribute('src') || video.dataset.src || '';
+  if (url && bg.getAttribute('src') !== url) {
+    bg.src = url;
+    try {
+      bg.load();
+    } catch (_) {}
+  }
+  const onReady = () => markBgReady(card);
+  bg.addEventListener('loadeddata', onReady);
+  bg.addEventListener('canplay', onReady);
+  markBgReady(card);
+  syncBgPlayback(card);
+}
+
+function syncAllLetterbox() {
+  const list = cards();
+  list.forEach((card, i) => {
+    syncLetterbox(card, i === activeIndex);
+  });
+}
+
 function bufferedAhead(video) {
   if (!video || !video.buffered || video.buffered.length === 0) return 0;
   try {
@@ -501,7 +702,13 @@ function setPosterVisible(card, visible) {
   if (!card) return;
   card.classList.toggle('video-ready', !visible);
   const poster = posterOf(card);
-  if (poster) poster.classList.toggle('hidden', !visible);
+  if (!poster) return;
+  // Letterbox: keep poster as blurred cover fill until the bg clip is ready.
+  const keepAsFill =
+    !visible &&
+    card.classList.contains('letterbox') &&
+    !card.classList.contains('bg-ready');
+  poster.classList.toggle('hidden', !visible && !keepAsFill);
 }
 
 function attachSrc(video) {
@@ -527,6 +734,10 @@ function detachSrc(video) {
     video.load();
   } catch (_) {}
   const card = video.closest('.card');
+  if (card) {
+    card.classList.remove('letterbox');
+    teardownClipBg(card);
+  }
   setPosterVisible(card, true);
 }
 
@@ -551,7 +762,10 @@ function tryPlay(video) {
 
 function onVideoPlaying(video) {
   const card = video.closest('.card');
+  const isActive = Number(card?.dataset.index) === activeIndex;
+  syncLetterbox(card, isActive);
   setPosterVisible(card, false);
+  if (isActive) syncBgPlayback(card);
   maybeAdvancePipeline();
 }
 
@@ -618,6 +832,15 @@ function wireVideo(video) {
   const onCanPlay = () => onVideoCanPlay(video);
   const onProgress = () => onVideoProgress(video);
   const onEnded = () => onVideoEnded(video);
+  const onMeta = () => {
+    const card = video.closest('.card');
+    if (!card) return;
+    syncLetterbox(card, Number(card.dataset.index) === activeIndex);
+  };
+  const onTimeUpdate = () => {
+    const card = video.closest('.card');
+    if (card && Number(card.dataset.index) === activeIndex) syncBgPlayback(card);
+  };
   const onWaiting = () => {
     const card = video.closest('.card');
     if (card && Number(card.dataset.index) === activeIndex && video.readyState < 2) {
@@ -629,8 +852,18 @@ function wireVideo(video) {
   video.addEventListener('canplaythrough', onCanPlay);
   video.addEventListener('progress', onProgress);
   video.addEventListener('ended', onEnded);
+  video.addEventListener('loadedmetadata', onMeta);
+  video.addEventListener('timeupdate', onTimeUpdate);
   video.addEventListener('waiting', onWaiting);
-  videoListeners.set(video, { onPlaying, onCanPlay, onProgress, onEnded, onWaiting });
+  videoListeners.set(video, {
+    onPlaying,
+    onCanPlay,
+    onProgress,
+    onEnded,
+    onMeta,
+    onTimeUpdate,
+    onWaiting,
+  });
 }
 
 function windowEnd() {
@@ -704,11 +937,14 @@ function syncActivePlayback() {
     const video = videoOf(card);
     if (!video) return;
     if (i === activeIndex) {
+      syncLetterbox(card, true);
       if (video.getAttribute('src') || video.src) {
         if (canStartPlayback(video)) tryPlay(video);
         if (isPlaying(video)) setPosterVisible(card, false);
       }
+      syncBgPlayback(card);
     } else {
+      syncLetterbox(card, false);
       video.pause();
       try {
         if (video.getAttribute('src')) video.currentTime = 0;
@@ -1470,32 +1706,84 @@ function closePlayOverlay() {
 function wireActiveVideoTap(card, game) {
   const video = videoOf(card);
   if (!video) return;
+  suppressVideoContextMenu(video);
+  const LONG_PRESS_MS = 450;
   let armed = false;
+  let longPressFired = false;
+  let holdTimer = 0;
   let startX = 0;
   let startY = 0;
   let startScroll = 0;
+
+  const clearHold = () => {
+    if (holdTimer) {
+      clearTimeout(holdTimer);
+      holdTimer = 0;
+    }
+  };
+
+  const disarm = () => {
+    armed = false;
+    clearHold();
+  };
 
   video.addEventListener(
     'pointerdown',
     (e) => {
       if (e.pointerType === 'mouse' && e.button !== 0) return;
       armed = true;
+      longPressFired = false;
       startX = e.clientX;
       startY = e.clientY;
       startScroll = feedEl.scrollTop;
+      clearHold();
+      holdTimer = window.setTimeout(() => {
+        holdTimer = 0;
+        if (!armed) return;
+        if (commentsOpen || playOverlayOpen) return;
+        if (Number(card.dataset.index) !== activeIndex) return;
+        if (Math.abs(feedEl.scrollTop - startScroll) > 8) return;
+        // Long-press toggles crop ↔ full frame; suppress the following tap-to-play.
+        // Mark fired before toggle so a second stacked timer cannot also arm play.
+        longPressFired = true;
+        armed = false;
+        clearHold();
+        toggleFitMode();
+      }, LONG_PRESS_MS);
     },
     { passive: true },
   );
 
-  const disarm = () => {
-    armed = false;
-  };
+  video.addEventListener(
+    'pointermove',
+    (e) => {
+      if (!armed || longPressFired) return;
+      if (Math.abs(e.clientX - startX) > 12 || Math.abs(e.clientY - startY) > 12) {
+        disarm();
+      }
+    },
+    { passive: true },
+  );
+
   video.addEventListener('pointercancel', disarm);
   video.addEventListener('pointerup', (e) => {
+    clearHold();
+    if (longPressFired) {
+      armed = false;
+      return;
+    }
     if (Math.abs(e.clientX - startX) > 12 || Math.abs(e.clientY - startY) > 12) disarm();
   });
 
   video.addEventListener('click', (e) => {
+    // Long-press already toggled fit mode — never open Play on that gesture.
+    if (longPressFired) {
+      longPressFired = false;
+      armed = false;
+      e.preventDefault();
+      e.stopPropagation();
+      return;
+    }
     if (!armed) return;
     armed = false;
     if (commentsOpen || playOverlayOpen) return;
@@ -1857,11 +2145,52 @@ async function init() {
 
   wireKeyboard();
   wireVisibility();
+  wireLetterboxResize();
+  wireFitToggle();
   if (!scrollHintWired) {
     scrollHintWired = true;
     feedEl.addEventListener('scroll', onFeedScroll, { passive: true });
     setTimeout(hideHint, 4000);
   }
+}
+
+let letterboxResizeWired = false;
+function wireLetterboxResize() {
+  if (letterboxResizeWired) return;
+  letterboxResizeWired = true;
+  let raf = 0;
+  const schedule = () => {
+    if (raf) return;
+    raf = requestAnimationFrame(() => {
+      raf = 0;
+      syncAllLetterbox();
+    });
+  };
+  window.addEventListener('resize', schedule, { passive: true });
+  window.visualViewport?.addEventListener('resize', schedule, { passive: true });
+}
+
+let fitToggleWired = false;
+function wireFitToggle() {
+  const logo = document.querySelector('.logo');
+  if (!logo || fitToggleWired) return;
+  fitToggleWired = true;
+  logo.setAttribute('role', 'button');
+  logo.setAttribute('tabindex', '0');
+  logo.title = 'Tap to toggle crop / full frame';
+  syncFitToggleTitle();
+  const toggle = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    toggleFitMode();
+  };
+  logo.addEventListener('click', toggle);
+  logo.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      toggle(e);
+    }
+  });
 }
 
 let visibilityWired = false;

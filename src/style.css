@@ -125,6 +125,10 @@ body {
   font-weight: 700;
   font-size: 15px;
   letter-spacing: 0.02em;
+  pointer-events: auto;
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .topbar-right {
@@ -305,6 +309,44 @@ body {
 
 .card.video-ready .clip {
   z-index: 0;
+}
+
+/* Blurred cover fill behind a contain-fit clip (active letterbox cards only). */
+.card .clip-bg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transform: scale(1.14);
+  filter: blur(28px) brightness(0.42);
+  z-index: 0;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.25s ease;
+}
+
+.card.letterbox .clip {
+  object-fit: contain;
+  z-index: 1;
+  background: transparent;
+}
+
+.card.letterbox.bg-ready .clip-bg {
+  opacity: 1;
+}
+
+/* Until the bg clip is ready, reuse the poster as a blurred cover fill. */
+.card.letterbox:not(.bg-ready) .poster {
+  filter: blur(28px) brightness(0.42);
+  transform: scale(1.14);
+  animation: none;
+  z-index: 0;
+  opacity: 1;
+}
+
+.card.letterbox:not(.bg-ready) .poster.hidden {
+  opacity: 1;
 }
 
 .mute-control {
