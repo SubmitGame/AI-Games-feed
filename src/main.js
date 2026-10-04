@@ -579,12 +579,12 @@ function wireHistoryNavigation() {
     const active = document.fullscreenElement || document.webkitFullscreenElement;
     if (active) return;
     if (fullscreenExitFromUs) return;
-    // Android back often only exits fullscreen. Pop the play entry too.
-    if (playOverlayOpen && history.state && history.state.opus === 'play') {
-      history.back();
-      return;
-    }
-    if (playOverlayOpen) closePlayOverlay();
+    if (!playOverlayOpen) return;
+    // Leave fullscreen straight to the feed. history.back() alone is often
+    // ignored inside this event, which left the in-page iframe on screen.
+    const dropPlay = history.state && history.state.opus === 'play';
+    closePlayOverlay({ immediate: true });
+    if (dropPlay) history.back();
   };
   document.addEventListener('fullscreenchange', onFullscreenEnd);
   document.addEventListener('webkitfullscreenchange', onFullscreenEnd);
@@ -1790,7 +1790,7 @@ function openPlayOverlay(url, title = 'Play game') {
   pushOverlayHistory('play');
 }
 
-function closePlayOverlay() {
+function closePlayOverlay({ immediate = false } = {}) {
   if (!playOverlayEl || !playOverlayOpen) return;
   playOverlayOpen = false;
   exitGameFullscreen();
@@ -1815,7 +1815,8 @@ function closePlayOverlay() {
     const video = videoOf(list[activeIndex]);
     if (video) tryPlay(video);
   };
-  setTimeout(finish, 180);
+  if (immediate) finish();
+  else setTimeout(finish, 180);
 }
 
 /**
