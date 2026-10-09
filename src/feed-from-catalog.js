@@ -353,6 +353,8 @@ export function mapCatalogToFeed(data) {
       made_with,
     };
     if (platforms) entry.platforms = platforms;
+    const engine = typeof g.engine === 'string' ? g.engine.trim() : '';
+    if (engine && !/^(unknown|uncertain|n\/a|none)$/i.test(engine)) entry.engine = engine;
     if (author) entry.author = author;
     if (github_user) entry.github_user = github_user;
     if (x_handle) entry.x_handle = x_handle;

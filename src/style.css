@@ -471,6 +471,23 @@ body {
   line-height: 1;
 }
 
+.engine {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: rgba(46, 196, 182, 0.26);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  color: rgba(255, 255, 255, 0.95);
+  line-height: 1;
+  white-space: nowrap;
+}
+
 .author {
   display: flex;
   align-items: center;

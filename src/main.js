@@ -1632,6 +1632,10 @@ function buildCard(game, index) {
     ? `<span class="made-with">${escapeHtml(madeLabel)}</span>`
     : '';
 
+  const engineHtml = game.engine
+    ? `<span class="engine" title="Made in ${escapeHtml(game.engine)}">${escapeHtml(game.engine)}</span>`
+    : '';
+
   const liked = isLiked(game.id);
   const likeN = displayLikeCount(game);
   const cmtN = commentCount(game);
@@ -1662,6 +1666,7 @@ function buildCard(game, index) {
         <span class="score">${escapeHtml(scoreLabel(game.screenshot_score))}</span>
         ${platHtml}
         ${madeHtml}
+        ${engineHtml}
       </div>
       ${authorRowHtml(game)}
       <h2 class="title">${escapeHtml(game.title)}</h2>
