@@ -427,10 +427,36 @@ function sortGames(games, mode) {
   return list;
 }
 
+/** Active tag filter (?tag=<tag>); empty string = no tag filter. */
+function normalizeTag(raw) {
+  const v = String(raw || '').toLowerCase().trim();
+  return /^[a-z0-9][a-z0-9-]{0,31}$/.test(v) ? v : '';
+}
+
+function tagFromUrl() {
+  try {
+    return normalizeTag(new URLSearchParams(window.location.search).get('tag'));
+  } catch (_) {
+    return '';
+  }
+}
+
+let activeTag = tagFromUrl();
+
+/** Tags a card can be filtered by: catalog tags plus the engine name. */
+function gameTags(g) {
+  const out = Array.isArray(g.tags) ? g.tags.slice() : [];
+  const eng = normalizeTag(String(g.engine || '').replace(/[\s.]+/g, '-'));
+  if (eng && !out.includes(eng)) out.push(eng);
+  return out;
+}
+
 /** Strict mobile filter: platforms must include "mobile"; untagged → out. */
 function filterGames(games, mobileOnly) {
-  if (!mobileOnly) return games;
-  return games.filter(
+  let list = games;
+  if (activeTag) list = list.filter((g) => gameTags(g).includes(activeTag));
+  if (!mobileOnly) return list;
+  return list.filter(
     (g) => Array.isArray(g.platforms) && g.platforms.includes('mobile'),
   );
 }
@@ -452,6 +478,7 @@ function publicUrlFor(id = '') {
   const current = new URL(window.location.href);
   const u = new URL(PUBLIC_SITE_ORIGIN);
   u.pathname = current.pathname;
+  if (activeTag) u.searchParams.set('tag', activeTag);
   if (id) u.searchParams.set('g', id);
   return u;
 }
@@ -554,6 +581,11 @@ function onHistoryPop() {
     closeCommentsSheet();
   }
   if (state.opus) return;
+  const urlTag = tagFromUrl();
+  if (urlTag !== activeTag) {
+    applyTagFilter(urlTag, { fromHistory: true, landId: state.g || deepLinkIdFromUrl() });
+    return;
+  }
   goToGameFromHistory(state.g || deepLinkIdFromUrl());
 }
 
@@ -1632,9 +1664,16 @@ function buildCard(game, index) {
     ? `<span class="made-with">${escapeHtml(madeLabel)}</span>`
     : '';
 
+  const engTag = normalizeTag(String(game.engine || '').replace(/[\s.]+/g, '-'));
   const engineHtml = game.engine
-    ? `<span class="engine" title="Made in ${escapeHtml(game.engine)}">${escapeHtml(game.engine)}</span>`
+    ? `<button type="button" class="engine tag-chip${engTag && engTag === activeTag ? ' active' : ''}" data-tag="${escapeHtml(engTag)}" title="Made in ${escapeHtml(game.engine)} — tap to filter">${escapeHtml(game.engine)}</button>`
     : '';
+  const tagsHtml = (Array.isArray(game.tags) ? game.tags : [])
+    .map(
+      (t) =>
+        `<button type="button" class="tag-chip${t === activeTag ? ' active' : ''}" data-tag="${escapeHtml(t)}" title="Show #${escapeHtml(t)} games">#${escapeHtml(t)}</button>`,
+    )
+    .join('');
 
   const liked = isLiked(game.id);
   const likeN = displayLikeCount(game);
@@ -1667,6 +1706,7 @@ function buildCard(game, index) {
         ${platHtml}
         ${madeHtml}
         ${engineHtml}
+        ${tagsHtml}
       </div>
       ${authorRowHtml(game)}
       <h2 class="title">${escapeHtml(game.title)}</h2>
@@ -1708,6 +1748,15 @@ function buildCard(game, index) {
     setMutedPreference(!effectiveMuted());
   });
 
+  card.querySelectorAll('.tag-chip').forEach((chip) => {
+    chip.addEventListener('pointerdown', (e) => e.stopPropagation());
+    chip.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const t = chip.dataset.tag || '';
+      if (t) applyTagFilter(t === activeTag ? '' : t);
+    });
+  });
   card.querySelector('.play').addEventListener('click', (e) => {
     e.stopPropagation();
     playGame(game);
@@ -2180,7 +2229,9 @@ function renderFeed(mode, mobileOnly, { restore = true, landId = '' } = {}) {
       feedEl.appendChild(buildEndCard());
       return;
     }
-    const msg = mobileOnly
+    const msg = activeTag
+      ? `No games tagged #${activeTag}${mobileOnly ? ' for mobile' : ''} yet`
+      : mobileOnly
       ? 'No mobile games tagged yet'
       : 'No gameplay videos found.';
     feedEl.innerHTML = `<div class="empty">${escapeHtml(msg)}</div>`;
@@ -2235,6 +2286,49 @@ function wireSortToggle() {
     renderFeed(mode, readMobileOnly(), { restore: false, landId: keepId });
     hideHint();
   });
+}
+
+const tagFilterEl = document.getElementById('tagFilter');
+
+function syncTagUI() {
+  if (!tagFilterEl) return;
+  tagFilterEl.hidden = !activeTag;
+  tagFilterEl.textContent = activeTag ? `#${activeTag} ✕` : '';
+  tagFilterEl.title = activeTag ? `Showing #${activeTag} — tap to clear` : '';
+  tagFilterEl.setAttribute('aria-label', activeTag ? `Clear tag filter ${activeTag}` : '');
+}
+
+/**
+ * Set or clear the tag filter. A new filter pushes one history entry so back
+ * returns to the unfiltered feed; history-driven changes don't push.
+ */
+function applyTagFilter(tag, { fromHistory = false, landId = '' } = {}) {
+  const next = normalizeTag(tag);
+  if (next === activeTag && !fromHistory) return;
+  const keepId = landId || currentGameId() || readLastId();
+  activeTag = next;
+  syncTagUI();
+  const inTag = !next || allGames.some((g) => g.id === keepId && gameTags(g).includes(next));
+  const id = inTag ? keepId : '';
+  if (!fromHistory) {
+    try {
+      const url = publicUrlFor(id).toString();
+      history.pushState({ g: id, tag: next }, '', url);
+    } catch (_) {}
+  }
+  historySilent = true;
+  try {
+    renderFeed(readSortMode(), readMobileOnly(), { restore: false, landId: id });
+  } finally {
+    historySilent = false;
+  }
+  syncCanonicalUrl(currentGameId());
+  hideHint();
+}
+
+function wireTagFilter() {
+  syncTagUI();
+  tagFilterEl?.addEventListener('click', () => applyTagFilter(''));
 }
 
 function wireMobileFilter() {
@@ -2298,7 +2392,8 @@ async function init() {
   syncMobileUI(mobileOnly);
   wireSortToggle();
   wireMobileFilter();
-  renderFeed(mode, mobileOnly, { restore: true });
+  wireTagFilter();
+  renderFeed(mode, mobileOnly, { restore: !activeTag });
 
   wireKeyboard();
   wireVisibility();

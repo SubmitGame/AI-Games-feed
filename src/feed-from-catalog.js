@@ -297,6 +297,15 @@ function passComments(g, entry) {
  * Only games with a playable video + play_url are included.
  */
 export function mapCatalogToFeed(data) {
+  function normalizeTags(raw) {
+    if (!Array.isArray(raw)) return [];
+    const out = [];
+    for (const t of raw) {
+      const v = String(t || '').toLowerCase().trim();
+      if (v && /^[a-z0-9][a-z0-9-]{0,31}$/.test(v) && !out.includes(v)) out.push(v);
+    }
+    return out;
+  }
   const gamesIn = Array.isArray(data?.games) ? data.games : [];
   const catalogCount = gamesIn.length;
   const filtered = gamesIn.filter((g) => g?.play_url && String(g.play_url).trim());
@@ -355,6 +364,8 @@ export function mapCatalogToFeed(data) {
     if (platforms) entry.platforms = platforms;
     const engine = typeof g.engine === 'string' ? g.engine.trim() : '';
     if (engine && !/^(unknown|uncertain|n\/a|none)$/i.test(engine)) entry.engine = engine;
+    const tags = normalizeTags(g.tags);
+    if (tags.length) entry.tags = tags;
     if (author) entry.author = author;
     if (github_user) entry.github_user = github_user;
     if (x_handle) entry.x_handle = x_handle;
