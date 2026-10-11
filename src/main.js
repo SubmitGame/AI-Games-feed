@@ -448,7 +448,42 @@ function gameTags(g) {
   const out = Array.isArray(g.tags) ? g.tags.slice() : [];
   const eng = normalizeTag(String(g.engine || '').replace(/[\s.]+/g, '-'));
   if (eng && !out.includes(eng)) out.push(eng);
+  platformTags(g.platforms).forEach((t) => {
+    if (!out.includes(t)) out.push(t);
+  });
+  const made = madeWithTag(g.made_with);
+  if (made && !out.includes(made)) out.push(made);
   return out;
+}
+
+/** Platform filter slugs: desktop/pc → pc, touch/phone/mobile → mobile. */
+function platformTags(platforms) {
+  if (!Array.isArray(platforms)) return [];
+  const set = new Set(platforms.map((x) => String(x).toLowerCase()));
+  const out = [];
+  if (set.has('mobile') || set.has('touch') || set.has('phone')) out.push('mobile');
+  if (set.has('pc') || set.has('desktop')) out.push('pc');
+  return out;
+}
+
+const MADE_LABELS = { 'opus-5.5': 'Opus 5.5', 'sonnet-5.5': 'Sonnet 5.5', astra: 'Astra' };
+
+function madeWithTag(made) {
+  const key = String(made || '').toLowerCase();
+  return MADE_LABELS[key] ? key : '';
+}
+
+/** Human label for a filter slug (header pill, titles). */
+function tagLabel(tag) {
+  if (tag === 'pc') return 'PC';
+  if (tag === 'mobile') return 'Mobile';
+  if (MADE_LABELS[tag]) return MADE_LABELS[tag];
+  return tag;
+}
+
+function chipHtml(tag, label, extraClass = '') {
+  const cls = `tag-chip${extraClass ? ' ' + extraClass : ''}${tag === activeTag ? ' active' : ''}`;
+  return `<button type="button" class="${cls}" data-tag="${escapeHtml(tag)}" title="Show ${escapeHtml(label)} games">${escapeHtml(label)}</button>`;
 }
 
 /** Strict mobile filter: platforms must include "mobile"; untagged → out. */
@@ -1647,10 +1682,9 @@ function buildCard(game, index) {
     ? `<p class="desc">${escapeHtml(game.description)}</p>`
     : '';
 
-  const plat = platformLabel(game.platforms);
-  const platHtml = plat
-    ? `<span class="platform">${escapeHtml(plat)}</span>`
-    : '';
+  const platHtml = platformTags(game.platforms)
+    .map((t) => chipHtml(t, tagLabel(t), 'platform'))
+    .join('');
 
   const madeLabel =
     game.made_with === 'opus-5.5'
@@ -1660,9 +1694,8 @@ function buildCard(game, index) {
         : game.made_with === 'astra'
           ? 'Astra'
           : '';
-  const madeHtml = madeLabel
-    ? `<span class="made-with">${escapeHtml(madeLabel)}</span>`
-    : '';
+  const madeTag = madeWithTag(game.made_with);
+  const madeHtml = madeLabel && madeTag ? chipHtml(madeTag, madeLabel, 'made-with') : '';
 
   const engTag = normalizeTag(String(game.engine || '').replace(/[\s.]+/g, '-'));
   const engineHtml = game.engine
@@ -1671,7 +1704,7 @@ function buildCard(game, index) {
   const tagsHtml = (Array.isArray(game.tags) ? game.tags : [])
     .map(
       (t) =>
-        `<button type="button" class="tag-chip${t === activeTag ? ' active' : ''}" data-tag="${escapeHtml(t)}" title="Show #${escapeHtml(t)} games">#${escapeHtml(t)}</button>`,
+        chipHtml(t, tagLabel(t)),
     )
     .join('');
 
@@ -2230,7 +2263,7 @@ function renderFeed(mode, mobileOnly, { restore = true, landId = '' } = {}) {
       return;
     }
     const msg = activeTag
-      ? `No games tagged #${activeTag}${mobileOnly ? ' for mobile' : ''} yet`
+      ? `No ${tagLabel(activeTag)} games${mobileOnly ? ' for mobile' : ''} yet`
       : mobileOnly
       ? 'No mobile games tagged yet'
       : 'No gameplay videos found.';
@@ -2293,8 +2326,8 @@ const tagFilterEl = document.getElementById('tagFilter');
 function syncTagUI() {
   if (!tagFilterEl) return;
   tagFilterEl.hidden = !activeTag;
-  tagFilterEl.textContent = activeTag ? `#${activeTag} ✕` : '';
-  tagFilterEl.title = activeTag ? `Showing #${activeTag} — tap to clear` : '';
+  tagFilterEl.textContent = activeTag ? `${tagLabel(activeTag)} ✕` : '';
+  tagFilterEl.title = activeTag ? `Showing ${tagLabel(activeTag)} — tap to clear` : '';
   tagFilterEl.setAttribute('aria-label', activeTag ? `Clear tag filter ${activeTag}` : '');
 }
 

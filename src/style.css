@@ -1240,3 +1240,5 @@ body.play-overlay-open .feed {
 .engine.tag-chip { background: rgba(46, 196, 182, 0.26); }
 .tag-chip.active { outline: 2px solid #fff; }
 .tag-filter[hidden] { display: none; }
+.platform.tag-chip { background: rgba(255, 255, 255, 0.14); font-size: 11px; }
+.made-with.tag-chip { background: rgba(124, 92, 255, 0.28); font-size: 11px; }
