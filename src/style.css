@@ -1242,3 +1242,5 @@ body.play-overlay-open .feed {
 .tag-filter[hidden] { display: none; }
 .platform.tag-chip { background: rgba(255, 255, 255, 0.14); font-size: 11px; }
 .made-with.tag-chip { background: rgba(124, 92, 255, 0.28); font-size: 11px; }
+.play { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
+.play.held { transform: scale(0.95); filter: brightness(1.15); }

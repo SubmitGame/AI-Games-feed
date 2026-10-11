@@ -1790,10 +1790,7 @@ function buildCard(game, index) {
       if (t) applyTagFilter(t === activeTag ? '' : t);
     });
   });
-  card.querySelector('.play').addEventListener('click', (e) => {
-    e.stopPropagation();
-    playGame(game);
-  });
+  wirePlayButton(card.querySelector('.play'), game);
 
   wireActiveVideoTap(card, game);
 
@@ -2056,6 +2053,60 @@ function playGame(gameOrUrl, maybeTitle) {
     if (video) video.pause();
     openGame(url);
   }
+}
+
+/** Tap Play = normal (iframe overlay or new tab). Hold ~450ms = always new tab. */
+function wirePlayButton(btn, game) {
+  if (!btn) return;
+  let holdTimer = 0;
+  let held = false;
+  let sx = 0;
+  let sy = 0;
+  const clear = () => {
+    if (holdTimer) clearTimeout(holdTimer);
+    holdTimer = 0;
+  };
+  btn.addEventListener('contextmenu', (e) => e.preventDefault());
+  btn.addEventListener('pointerdown', (e) => {
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    held = false;
+    sx = e.clientX;
+    sy = e.clientY;
+    clear();
+    holdTimer = setTimeout(() => {
+      holdTimer = 0;
+      held = true;
+      btn.classList.add('held');
+      if (navigator.vibrate) navigator.vibrate(15);
+    }, 450);
+  });
+  // Open on release: touch pointerdown is not a user activation, so a
+  // window.open from the timer would be popup-blocked.
+  btn.addEventListener('pointerup', () => {
+    btn.classList.remove('held');
+    if (!held) return;
+    const url = game?.play_url;
+    if (!url) return;
+    autoAdvancePaused = true;
+    watchAccumSec = 0;
+    const video = videoOf(cards()[activeIndex]);
+    if (video) video.pause();
+    openGame(url);
+  });
+  btn.addEventListener('pointermove', (e) => {
+    if (Math.abs(e.clientX - sx) > 14 || Math.abs(e.clientY - sy) > 14) clear();
+  });
+  ['pointerup', 'pointerleave', 'pointercancel'].forEach((ev) => btn.addEventListener(ev, clear));
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    clear();
+    if (held) {
+      held = false;
+      e.preventDefault();
+      return;
+    }
+    playGame(game);
+  });
 }
 
 function pointInEl(x, y, el) {
