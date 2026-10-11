@@ -371,6 +371,16 @@ export function mapCatalogToFeed(data) {
     if (x_handle) entry.x_handle = x_handle;
     if (avatar_url) entry.avatar_url = avatar_url;
     if (typeof g.iframe === 'boolean') entry.iframe = g.iframe;
+    // Native (non-browser) games: Download replaces Play.
+    if (g.browser_playable === false) entry.browser_playable = false;
+    if (typeof g.download_url === 'string' && /^https?:\/\//.test(g.download_url)) {
+      entry.download_url = g.download_url;
+    }
+    if (Array.isArray(g.download_platforms)) {
+      entry.download_platforms = g.download_platforms
+        .map((x) => String(x).toLowerCase().trim())
+        .filter(Boolean);
+    }
     passRemoteLikes(g, entry);
     passComments(g, entry);
     feed.push(entry);

@@ -1744,7 +1744,7 @@ function buildCard(game, index) {
       ${authorRowHtml(game)}
       <h2 class="title">${escapeHtml(game.title)}</h2>
       ${desc}
-      <button type="button" class="play" aria-label="${escapeHtml(playButtonLabel(game))} ${escapeHtml(game.title)}">${escapeHtml(playButtonLabel(game))}</button>
+      ${playOrDownloadHtml(game)}
     </div>
     <div class="rail" aria-label="Actions">
       <button type="button" class="rail-btn like ${liked ? 'liked' : ''}" aria-pressed="${liked ? 'true' : 'false'}" aria-label="${liked ? 'Unlike' : 'Like'}">
@@ -1790,7 +1790,8 @@ function buildCard(game, index) {
       if (t) applyTagFilter(t === activeTag ? '' : t);
     });
   });
-  wirePlayButton(card.querySelector('.play'), game);
+  if (isDownloadGame(game)) wireDownloadButton(card.querySelector('.play'), game);
+  else wirePlayButton(card.querySelector('.play'), game);
 
   wireActiveVideoTap(card, game);
 
@@ -1839,6 +1840,53 @@ function isIframeGame(gameOrFlag) {
   if (typeof gameOrFlag === 'boolean') return gameOrFlag;
   if (gameOrFlag && typeof gameOrFlag === 'object') return gameOrFlag.iframe === true;
   return gameOrFlag === true || gameOrFlag === 'true';
+}
+
+/** Native download (not playable in the browser). */
+function isDownloadGame(game) {
+  return game?.browser_playable === false && !!game?.download_url;
+}
+
+/** This device's OS slug: android, ios, windows, macos, linux. */
+function deviceOs() {
+  const ua = navigator.userAgent || '';
+  if (/Android/i.test(ua)) return 'android';
+  if (/iPhone|iPad|iPod/i.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1)) return 'ios';
+  if (/Windows/i.test(ua)) return 'windows';
+  if (/Mac OS X|Macintosh/i.test(ua)) return 'macos';
+  if (/Linux|CrOS/i.test(ua)) return 'linux';
+  return '';
+}
+
+const OS_LABELS = { windows: 'Windows', macos: 'macOS', linux: 'Linux', android: 'Android', ios: 'iOS' };
+
+/** True when the download offers a build for this device (unknown list → allow). */
+function downloadFitsDevice(game) {
+  const list = game?.download_platforms;
+  if (!Array.isArray(list) || !list.length) return true;
+  const os = deviceOs();
+  if (!os) return true;
+  if (list.includes(os)) return true;
+  if (list.includes('pc') && (os === 'windows' || os === 'linux')) return true;
+  return false;
+}
+
+function downloadPlatformsLabel(game) {
+  const list = Array.isArray(game?.download_platforms) ? game.download_platforms : [];
+  return list.map((x) => OS_LABELS[x] || (x === 'pc' ? 'PC' : x)).join(' · ');
+}
+
+function playOrDownloadHtml(game) {
+  if (isDownloadGame(game)) {
+    const fits = downloadFitsDevice(game);
+    const plats = downloadPlatformsLabel(game);
+    const label = 'Download ↓';
+    const title = fits
+      ? `Download for ${plats || 'your device'}`
+      : `Only for ${plats} — not available on this device`;
+    return `<button type="button" class="play download${fits ? '' : ' unavailable'}" data-download="${escapeHtml(game.download_url)}" aria-disabled="${fits ? 'false' : 'true'}" title="${escapeHtml(title)}" aria-label="${escapeHtml(title)}: ${escapeHtml(game.title)}">${label}${plats ? `<span class="dl-plat">${escapeHtml(plats)}</span>` : ''}</button>`;
+  }
+  return `<button type="button" class="play" aria-label="${escapeHtml(playButtonLabel(game))} ${escapeHtml(game.title)}">${escapeHtml(playButtonLabel(game))}</button>`;
 }
 
 function playButtonLabel(game) {
@@ -2053,6 +2101,22 @@ function playGame(gameOrUrl, maybeTitle) {
     if (video) video.pause();
     openGame(url);
   }
+}
+
+function wireDownloadButton(btn, game) {
+  if (!btn) return;
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (!downloadFitsDevice(game)) {
+      showToast(`Only for ${downloadPlatformsLabel(game)}`);
+      return;
+    }
+    autoAdvancePaused = true;
+    watchAccumSec = 0;
+    const video = videoOf(cards()[activeIndex]);
+    if (video) video.pause();
+    openGame(game.download_url);
+  });
 }
 
 /** Tap Play = normal (iframe overlay or new tab). Hold ~450ms = always new tab. */
