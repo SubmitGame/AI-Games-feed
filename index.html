@@ -26,7 +26,14 @@
         </div>
         <button type="button" class="filter-btn" id="mobileFilter" aria-pressed="false" title="Show only mobile-tagged games">Mobile</button>
         <button type="button" class="filter-btn active tag-filter" id="tagFilter" hidden></button>
+        <button type="button" class="filter-btn search-btn" id="searchBtn" aria-label="Search games" title="Search games">
+          <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></svg>
+        </button>
         <span class="meta" id="count"></span>
+      </div>
+      <div class="search-box" id="searchBox" hidden>
+        <input type="search" id="searchInput" placeholder="Search games, creators, tags" autocomplete="off" enterkeyhint="search" aria-label="Search games" />
+        <button type="button" class="search-clear" id="searchClear" aria-label="Close search">✕</button>
       </div>
     </header>
     <main id="feed" class="feed" aria-label="Game feed"></main>

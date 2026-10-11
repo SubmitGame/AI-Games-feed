@@ -443,6 +443,44 @@ function tagFromUrl() {
 
 let activeTag = tagFromUrl();
 
+/** Free-text search (?search=…); empty = off. */
+function searchFromUrl() {
+  try {
+    return String(new URLSearchParams(window.location.search).get('search') || '').trim().slice(0, 80);
+  } catch (_) {
+    return '';
+  }
+}
+
+let activeSearch = searchFromUrl();
+
+function searchWords(q) {
+  return String(q || '').toLowerCase().split(/\s+/).filter(Boolean);
+}
+
+/** Haystack: title, creator handles, engine, tags, platform and model labels. */
+function searchText(g) {
+  return [
+    g.title,
+    g.author,
+    g.github_user,
+    g.x_handle,
+    g.engine,
+    ...gameTags(g),
+    ...gameTags(g).map(tagLabel),
+    g.description,
+  ]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase();
+}
+
+function matchesSearch(g, words) {
+  if (!words.length) return true;
+  const hay = searchText(g);
+  return words.every((w) => hay.includes(w.replace(/^@/, '')));
+}
+
 /** Tags a card can be filtered by: catalog tags plus the engine name. */
 function gameTags(g) {
   const out = Array.isArray(g.tags) ? g.tags.slice() : [];
@@ -490,6 +528,8 @@ function chipHtml(tag, label, extraClass = '') {
 function filterGames(games, mobileOnly) {
   let list = games;
   if (activeTag) list = list.filter((g) => gameTags(g).includes(activeTag));
+  const words = searchWords(activeSearch);
+  if (words.length) list = list.filter((g) => matchesSearch(g, words));
   if (!mobileOnly) return list;
   return list.filter(
     (g) => Array.isArray(g.platforms) && g.platforms.includes('mobile'),
@@ -514,6 +554,7 @@ function publicUrlFor(id = '') {
   const u = new URL(PUBLIC_SITE_ORIGIN);
   u.pathname = current.pathname;
   if (activeTag) u.searchParams.set('tag', activeTag);
+  if (activeSearch) u.searchParams.set('search', activeSearch);
   if (id) u.searchParams.set('g', id);
   return u;
 }
@@ -616,6 +657,20 @@ function onHistoryPop() {
     closeCommentsSheet();
   }
   if (state.opus) return;
+  const urlSearch = searchFromUrl();
+  if (urlSearch !== activeSearch) {
+    activeSearch = urlSearch;
+    syncSearchUI();
+    if (tagFromUrl() === activeTag) {
+      historySilent = true;
+      try {
+        renderFeed(readSortMode(), readMobileOnly(), { restore: false, landId: state.g || '' });
+      } finally {
+        historySilent = false;
+      }
+      return;
+    }
+  }
   const urlTag = tagFromUrl();
   if (urlTag !== activeTag) {
     applyTagFilter(urlTag, { fromHistory: true, landId: state.g || deepLinkIdFromUrl() });
@@ -2377,7 +2432,9 @@ function renderFeed(mode, mobileOnly, { restore = true, landId = '' } = {}) {
       feedEl.appendChild(buildEndCard());
       return;
     }
-    const msg = activeTag
+    const msg = activeSearch
+      ? `No games for “${activeSearch}”${activeTag ? ` in ${tagLabel(activeTag)}` : ''}`
+      : activeTag
       ? `No ${tagLabel(activeTag)} games${mobileOnly ? ' for mobile' : ''} yet`
       : mobileOnly
       ? 'No mobile games tagged yet'
@@ -2474,6 +2531,92 @@ function applyTagFilter(tag, { fromHistory = false, landId = '' } = {}) {
   hideHint();
 }
 
+const searchBtnEl = document.getElementById('searchBtn');
+const searchBoxEl = document.getElementById('searchBox');
+const searchInputEl = document.getElementById('searchInput');
+let searchTimer = 0;
+/** True while the current history entry is the search entry we pushed. */
+let searchEntryPushed = false;
+
+function syncSearchUI() {
+  if (searchInputEl && document.activeElement !== searchInputEl) searchInputEl.value = activeSearch;
+  const open = !!activeSearch || document.body.classList.contains('search-open');
+  if (searchBoxEl) searchBoxEl.hidden = !open;
+  searchBtnEl?.classList.toggle('active', !!activeSearch);
+}
+
+/** Live search: first change pushes one entry, later keystrokes replace it. */
+function applySearch(q) {
+  const next = String(q || '').trim().slice(0, 80);
+  if (next === activeSearch) return;
+  const wasEmpty = !activeSearch;
+  activeSearch = next;
+  const words = searchWords(next);
+  const first = visibleGames(readSortMode(), readMobileOnly()).find((g) => matchesSearch(g, words));
+  const id = first?.id || '';
+  try {
+    const url = publicUrlFor(id).toString();
+    if (wasEmpty && next && !searchEntryPushed) {
+      history.pushState({ g: id, search: next }, '', url);
+      searchEntryPushed = true;
+    } else {
+      history.replaceState({ g: id, search: next }, '', url);
+    }
+  } catch (_) {}
+  if (!next) searchEntryPushed = false;
+  historySilent = true;
+  try {
+    renderFeed(readSortMode(), readMobileOnly(), { restore: false, landId: id });
+  } finally {
+    historySilent = false;
+  }
+  syncSearchUI();
+  syncCanonicalUrl(currentGameId());
+  hideHint();
+}
+
+function closeSearch() {
+  document.body.classList.remove('search-open');
+  searchInputEl?.blur();
+  if (activeSearch) {
+    if (searchEntryPushed && history.state && history.state.search) {
+      searchEntryPushed = false;
+      history.back();
+    } else {
+      applySearch('');
+    }
+  }
+  syncSearchUI();
+}
+
+function wireSearch() {
+  syncSearchUI();
+  searchBtnEl?.addEventListener('click', () => {
+    if (document.body.classList.contains('search-open') || activeSearch) {
+      closeSearch();
+      return;
+    }
+    document.body.classList.add('search-open');
+    syncSearchUI();
+    searchInputEl?.focus();
+  });
+  searchInputEl?.addEventListener('input', () => {
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(() => applySearch(searchInputEl.value), 250);
+  });
+  searchInputEl?.addEventListener('keydown', (e) => {
+    e.stopPropagation();
+    if (e.key === 'Enter') {
+      clearTimeout(searchTimer);
+      applySearch(searchInputEl.value);
+      searchInputEl.blur();
+    } else if (e.key === 'Escape') {
+      closeSearch();
+    }
+  });
+  document.getElementById('searchClear')?.addEventListener('click', closeSearch);
+}
+
 function wireTagFilter() {
   syncTagUI();
   tagFilterEl?.addEventListener('click', () => applyTagFilter(''));
@@ -2541,6 +2684,7 @@ async function init() {
   wireSortToggle();
   wireMobileFilter();
   wireTagFilter();
+  wireSearch();
   renderFeed(mode, mobileOnly, { restore: !activeTag });
 
   wireKeyboard();
