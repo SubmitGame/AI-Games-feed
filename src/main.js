@@ -1609,6 +1609,13 @@ function socialHandleFromUrl(value, hosts) {
 /** Pick the place this game was found, keeping X ahead of GitHub. */
 function authorUrlFor(game) {
   const sourceUrls = sourceUrlsFor(game);
+  // Prefer the original post itself (X status, Reddit thread, HN item) over a profile.
+  const postUrl = [game?.likes_source_url, ...sourceUrls].map((v) => httpUrl(v)).find((u) => u && (
+    (/(^|\.)(x|twitter)\.com$/i.test(u.hostname) && /\/status\/\d+/.test(u.pathname)) ||
+    (/(^|\.)reddit\.com$/i.test(u.hostname) && /\/comments\//.test(u.pathname)) ||
+    (/^news\.ycombinator\.com$/i.test(u.hostname) && u.searchParams.get('id'))
+  ));
+  if (postUrl) return postUrl.toString();
   const xHosts = new Set(['x.com', 'www.x.com', 'twitter.com', 'www.twitter.com']);
   const explicitX = String(game?.x_handle || '').replace(/^@/, '').trim();
   const xHandle = /^[A-Za-z0-9_]{1,15}$/.test(explicitX) && !X_RESERVED_HANDLES.has(explicitX.toLowerCase())
