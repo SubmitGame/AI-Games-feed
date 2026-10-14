@@ -24,7 +24,7 @@ export const VIDEO_RAW_BASE =
 /** Vite-dev proxy for the same SubmitGame catalog when direct fetch fails. */
 export const CATALOG_PROXY_URL = CATALOG_SOURCE.proxy;
 
-const MADE_WITH_ALLOWED = new Set(['opus-5.5', 'sonnet-5.5', 'astra']);
+const MADE_WITH_ALLOWED = new Set(['opus-5.5', 'sonnet-5.5', 'astra', 'gemini-4-argon']);
 
 const GH_RESERVED = new Set([
   'orgs', 'topics', 'features', 'about', 'pricing', 'login', 'signup',

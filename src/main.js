@@ -504,7 +504,7 @@ function platformTags(platforms) {
   return out;
 }
 
-const MADE_LABELS = { 'opus-5.5': 'Opus 5.5', 'sonnet-5.5': 'Sonnet 5.5', astra: 'Astra' };
+const MADE_LABELS = { 'opus-5.5': 'Opus 5.5', 'sonnet-5.5': 'Sonnet 5.5', astra: 'Astra', 'gemini-4-argon': 'Gemini 4 Argon' };
 
 function madeWithTag(made) {
   const key = String(made || '').toLowerCase();
@@ -1748,14 +1748,7 @@ function buildCard(game, index) {
     .map((t) => chipHtml(t, tagLabel(t), 'platform'))
     .join('');
 
-  const madeLabel =
-    game.made_with === 'opus-5.5'
-      ? 'Opus 5.5'
-      : game.made_with === 'sonnet-5.5'
-        ? 'Sonnet 5.5'
-        : game.made_with === 'astra'
-          ? 'Astra'
-          : '';
+  const madeLabel = MADE_LABELS[String(game.made_with || '').toLowerCase()] || '';
   const madeTag = madeWithTag(game.made_with);
   const madeHtml = madeLabel && madeTag ? chipHtml(madeTag, madeLabel, 'made-with') : '';
 
