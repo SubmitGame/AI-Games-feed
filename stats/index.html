@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#0a0a0a" />
+    <meta name="robots" content="noindex, nofollow" />
+    <title>Stats · AI Games Feed</title>
+    <link rel="stylesheet" href="/src/stats.css" />
+  </head>
+  <body>
+    <header class="bar">
+      <a class="logo" href="/">AI Games Feed</a>
+      <span class="title">Live stats</span>
+      <span class="live" id="live"><i></i><span id="liveText">connecting…</span></span>
+    </header>
+    <main id="app">
+      <section class="kpis" id="kpis"></section>
+      <section class="card wide">
+        <h2>Plays &amp; views per minute <small>last 60 min</small></h2>
+        <div class="spark" id="spark"></div>
+        <div class="legend"><span class="lv">views</span><span class="lp">plays</span></div>
+      </section>
+      <section class="grid">
+        <div class="card"><h2>Top games <small>24h</small></h2><div id="top24"></div></div>
+        <div class="card"><h2>Top games <small>7 days</small></h2><div id="top7"></div></div>
+        <div class="card"><h2>Quick skips <small>watched &lt;2s, 24h</small></h2><div id="skips"></div></div>
+        <div class="card"><h2>Zero-result searches <small>7 days</small></h2><div id="zero"></div></div>
+        <div class="card"><h2>Top searches <small>7 days</small></h2><div id="searches"></div></div>
+        <div class="card"><h2>Top tags <small>7 days</small></h2><div id="tags"></div></div>
+        <div class="card"><h2>Daily <small>30 days, hourly rollups</small></h2><div id="daily"></div></div>
+      </section>
+    </main>
+    <script type="module" src="/src/stats.js"></script>
+  </body>
+</html>

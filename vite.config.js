@@ -1,4 +1,5 @@
 import { defineConfig } from 'vite'
+import { resolve } from 'node:path'
 
 /**
  * Default: browser fetches the SubmitGame catalog directly from
@@ -10,6 +11,14 @@ import { defineConfig } from 'vite'
  */
 export default defineConfig({
   base: '/',
+  build: {
+    rollupOptions: {
+      input: {
+        main: resolve(import.meta.dirname, 'index.html'),
+        stats: resolve(import.meta.dirname, 'stats/index.html'),
+      },
+    },
+  },
   server: {
     host: '0.0.0.0',
     port: 5173,

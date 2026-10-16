@@ -2,6 +2,7 @@ import {
   fetchCatalogFeed,
   REPO_RAW_BASE,
 } from './feed-from-catalog.js';
+import * as analytics from './analytics.js';
 
 const feedEl = document.getElementById('feed');
 const countEl = document.getElementById('count');
@@ -110,13 +111,18 @@ function scoreLabel(score) {
 function readSortMode() {
   try {
     const v = localStorage.getItem(SORT_KEY);
-    if (v === SORT_NEW || v === SORT_TOP) return v;
+    if (v === SORT_NEW || v === SORT_TOP) {
+      analytics.setSort(v);
+      return v;
+    }
   } catch (_) {}
   // Top is the default when nothing is saved.
+  analytics.setSort(SORT_TOP);
   return SORT_TOP;
 }
 
 function writeSortMode(mode) {
+  analytics.setSort(mode);
   try {
     localStorage.setItem(SORT_KEY, mode);
   } catch (_) {}
@@ -1216,7 +1222,10 @@ function setActiveIndex(next) {
   } else if (accumGameId !== id) {
     resetWatchAccum(id);
   }
-  if (id) markSeen(id);
+  if (id) {
+    markSeen(id);
+    analytics.cardEnter(id);
+  }
   const warmEnd = Math.min(activeIndex + PLAY_NAV_PRELOAD_WINDOW - 1, list.length - 1);
   for (let i = activeIndex; i <= warmEnd; i++) {
     warmPlayNavigation(list[i]?.dataset.url);
@@ -1842,6 +1851,7 @@ function buildCard(game, index) {
       e.preventDefault();
       e.stopPropagation();
       const t = chip.dataset.tag || '';
+      if (t && t !== activeTag) analytics.track('tag', { game_id: game.id, tag: t });
       if (t) applyTagFilter(t === activeTag ? '' : t);
     });
   });
@@ -1854,6 +1864,7 @@ function buildCard(game, index) {
   likeBtn.addEventListener('click', (e) => {
     e.stopPropagation();
     const on = toggleLike(game.id);
+    if (on) analytics.track('like', { game_id: game.id });
     likeBtn.classList.toggle('liked', on);
     likeBtn.setAttribute('aria-pressed', on ? 'true' : 'false');
     likeBtn.setAttribute('aria-label', on ? 'Unlike' : 'Like');
@@ -1867,11 +1878,13 @@ function buildCard(game, index) {
 
   card.querySelector('.comments').addEventListener('click', (e) => {
     e.stopPropagation();
+    analytics.track('comments', { game_id: game.id });
     openCommentsSheet(game);
   });
 
   card.querySelector('.share').addEventListener('click', (e) => {
     e.stopPropagation();
+    analytics.track('share', { game_id: game.id });
     shareGame(game);
   });
 
@@ -1980,6 +1993,7 @@ function openPlayOverlay(url, title = 'Play game') {
 function closePlayOverlay({ immediate = false } = {}) {
   if (!playOverlayEl || !playOverlayOpen) return;
   playOverlayOpen = false;
+  analytics.playExited();
   exitGameFullscreen();
   playOverlayEl.classList.remove('open');
   document.body.classList.remove('play-overlay-open');
@@ -2147,6 +2161,8 @@ function playGame(gameOrUrl, maybeTitle) {
     maybeTitle ||
     (typeof gameOrUrl === 'object' && gameOrUrl?.title) ||
     'Play game';
+  const gid = typeof gameOrUrl === 'object' ? gameOrUrl?.id || gameOrUrl?.dataset?.id : currentGameId();
+  analytics.playStarted(gid, iframe);
   if (iframe) openPlayOverlay(url, title);
   else {
     autoAdvancePaused = true;
@@ -2166,6 +2182,7 @@ function wireDownloadButton(btn, game) {
       showToast(`Only for ${downloadPlatformsLabel(game)}`);
       return;
     }
+    analytics.track('download', { game_id: game.id });
     autoAdvancePaused = true;
     watchAccumSec = 0;
     const video = videoOf(cards()[activeIndex]);
@@ -2206,6 +2223,7 @@ function wirePlayButton(btn, game) {
     if (!held) return;
     const url = game?.play_url;
     if (!url) return;
+    analytics.track('play_tab', { game_id: game.id });
     autoAdvancePaused = true;
     watchAccumSec = 0;
     const video = videoOf(cards()[activeIndex]);
@@ -2552,7 +2570,9 @@ function applySearch(q) {
   const wasEmpty = !activeSearch;
   activeSearch = next;
   const words = searchWords(next);
-  const first = visibleGames(readSortMode(), readMobileOnly()).find((g) => matchesSearch(g, words));
+  const pool = visibleGames(readSortMode(), readMobileOnly());
+  const first = pool.find((g) => matchesSearch(g, words));
+  if (next) analytics.trackSearch(next, pool.filter((g) => matchesSearch(g, words)).length);
   const id = first?.id || '';
   try {
     const url = publicUrlFor(id).toString();
